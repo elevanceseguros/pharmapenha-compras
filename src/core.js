@@ -11,7 +11,7 @@ export function decimal(s){
 }
 export const cents=s=>Math.round(decimal(s)*100);
 export function quantity(n,unit){
- const u=String(unit).toLowerCase();const units={g:['g',1],kg:['g',1000],mg:['g',.001],ml:['ml',1],l:['ml',1000],un:['un',1]};
+ const u=String(unit).trim().toLowerCase();const units={g:['g',1],kg:['g',1000],mg:['g',.001],ml:['ml',1],l:['ml',1000],un:['un',1],mlh:['un',1000],mil:['un',1000]};
  if(!units[u]||!Number.isFinite(n)||n<=0)throw Error('Quantidade ou unidade inválida.');
  return {qty:Math.round(n*units[u][1]*1e6)/1e6,unit:units[u][0]};
 }
@@ -21,7 +21,6 @@ export function candidates(item,offers,suppliers,date=today()){
  if(!Number.isFinite(item.qty)||item.qty<=0)return out;
  for(const o of offers){
   if(o.productId!==item.id||o.unit!==item.unit||o.available===false||o.reviewed!==true||!suppliers.some(s=>s.id===o.supplierId))continue;
-  if(o.expires&&o.expires<date)continue;
   if(item.lock&&o.supplierId!==item.lock)continue;
   if(!Number.isFinite(o.packQty)||o.packQty<=0||!Number.isSafeInteger(o.netCents)||o.netCents<=0||!Number.isSafeInteger(o.grossCents)||o.grossCents<o.netCents)continue;
   const ratio=item.qty/o.packQty;const packs=Math.ceil(ratio-1e-9);

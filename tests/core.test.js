@@ -14,7 +14,7 @@ test('não aumenta quantidade para completar mínimos',()=>{const p=optimize([it
 test('arredondamento de embalagem exige autorização',()=>{const s=[supplier('X')],o=[offer('1','a','X',10000,200)];assert.equal(optimize([item('a')],o,s,params).status,'missing');const p=optimize([{...item('a'),allowExcess:true}],o,s,params);assert.equal(p.lines[0].excess,100)});
 test('mínimo exclui frete e impostos por padrão',()=>{const o={...offer('1','a','X',60000),netCents:50000};assert.equal(optimize([item('a')],[o],[supplier('X',60000,20000)],params).status,'infeasible');assert.equal(optimize([item('a')],[o],[{...supplier('X',60000),minimumBasis:'gross'}],params).status,'feasible')});
 test('frete entra no custo uma única vez por fornecedor',()=>{const p=optimize([item('a'),item('b')],[offer('1','a','X',200),offer('2','b','X',200),offer('3','a','Y',300),offer('4','b','Y',300)],[supplier('X',0,500),supplier('Y')],params);assert.equal(p.total,600);assert.equal(p.orders.length,1);assert.equal(p.orders[0].supplier.id,'Y')});
-test('vencidos, zero, não conferidos, indisponíveis e estoque insuficiente não entram',()=>{for(const patch of [{expires:'2026-09-02'},{available:false},{reviewed:false},{netCents:0},{maxPacks:0}]){assert.equal(optimize([item('a')],[{...offer('1','a','X',10000),...patch}],[supplier('X')],params).status,'missing')}});
+test('zero, não conferidos, indisponíveis e estoque insuficiente não entram',()=>{for(const patch of [{available:false},{reviewed:false},{netCents:0},{maxPacks:0}]){assert.equal(optimize([item('a')],[{...offer('1','a','X',10000),...patch}],[supplier('X')],params).status,'missing')}});
 test('fornecedor fixado é respeitado',()=>{const p=optimize([{...item('a'),lock:'Y'}],[offer('1','a','X',100),offer('2','a','Y',200)],[supplier('X'),supplier('Y')],params);assert.equal(p.total,200)});
 test('busca truncada não declara inviabilidade provada',()=>{const p=optimize([item('a')],[offer('1','a','X',100)],[supplier('X')],{...params,maxNodes:0});assert.equal(p.status,'inconclusive');assert.equal(p.optimal,false)});
 test('resultado exato coincide com enumeração independente em casos pequenos',()=>{let seed=17;const rnd=()=>{seed=(seed*16807)%2147483647;return seed};for(let n=0;n<30;n++){const ss=[supplier('X',rnd()%700,rnd()%50),supplier('Y',rnd()%700,rnd()%50)];const ii=[item('a'),item('b'),item('c')];const oo=ii.flatMap(i=>ss.map(s=>offer(i.id+s.id,i.id,s.id,100+rnd()%500)));let best=Infinity;for(let mask=0;mask<8;mask++){const lines=ii.map((i,k)=>candidates(i,oo,ss)[0]);for(let k=0;k<3;k++)lines[k]=candidates(ii[k],oo,ss).find(o=>o.supplierId===ss[(mask>>k)&1].id);const orders=ordersFor(lines,ss);if(orders.every(o=>o.valid))best=Math.min(best,orders.reduce((v,o)=>v+o.total,0))}const p=optimize(ii,oo,ss,params);assert.equal(p.total??Infinity,best)}});
@@ -22,3 +22,19 @@ test('parser preserva preço de embalagem e produto',()=>{const p=parseQuotation
 test('parser kg decimal com insumo fictício',()=>{const p=parseQuotation('Insumo Teste INDIA 0,100 KG 0,100 06/2030 150,00 15,00');assert.equal(p.rows[0].qty,100);assert.equal(p.rows[0].net,1500)});
 test('parser duas embalagens divide total corretamente',()=>{const p=parseQuotation('Insumo Teste China 18/01/2030 2,00 1 KG R$24,00 R$24,00 R$48,00 0,00 0,00 R$48,00');assert.equal(p.rows[0].gross,2400);assert.equal(p.rows[0].quotedPacks,2)});
 test('restauração rejeita valores inválidos e referências faltantes',()=>{assert.throws(()=>validateState({version:1,items:[],suppliers:[supplier('X',-1)],offers:[]}));assert.throws(()=>validateState({version:1,items:[],suppliers:[],offers:[offer('o','a','X',100)]}))});
+test('prazo antigo da cotação não bloqueia comparação nem pedido',()=>{const p=optimize([item('a')],[{...offer('1','a','X',10000),expires:'2020-01-01'}],[supplier('X')],params);assert.equal(p.status,'feasible')});
+test('kg, g e mg produzem a mesma base para comparação de preços',()=>{
+ const base=quantity(.1,'kg');assert.deepEqual(base,quantity(100,'g'));assert.deepEqual(base,quantity(100000,'mg'));
+ const i={...item('a'),...base};
+ const options=candidates(i,[{...offer('1','a','X',7300),packQty:quantity(.1,'kg').qty},{...offer('2','a','X',8000),packQty:quantity(100,'g').qty}],[supplier('X')]);
+ assert.equal(options.length,2);assert.equal(options[0].gross,7300);assert.equal(options[0].qty,100);
+});
+test('milheiro e unidades comparam cápsulas sem misturar volume',()=>{
+ assert.deepEqual(quantity(1,'MLH'),{qty:1000,unit:'un'});assert.deepEqual(quantity(2,'mil'),{qty:2000,unit:'un'});
+ const a=parseQuotation('Capsulas exemplo 1 MLH — R$ 80,00').rows[0];const b=parseQuotation('Capsulas exemplo 1000 un — R$ 90,00').rows[0];
+ assert.equal(a.qty,b.qty);assert.equal(a.unit,'un');assert.equal(a.net,8000);
+ assert.equal(candidates({...item('a'),qty:1000,unit:'un'},[{...offer('1','a','X',8000),packQty:1000,unit:'ml'}],[supplier('X')]).length,0);
+});
+test('parser aceita preço por kg quebrado sem perder preço da embalagem',()=>{
+ const r=parseQuotation('Produto exemplo China 30/04/2029 1,00 5 G R$110.000, R$550,00 R$550,00 0,00 0,00 R$550,00').rows[0];assert.equal(r.net,55000);assert.equal(r.gross,55000);assert.equal(r.qty,5);
+});

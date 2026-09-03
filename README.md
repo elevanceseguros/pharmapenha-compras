@@ -6,7 +6,7 @@ Aplicação Vite para comparar cotações, respeitar pedidos mínimos e gerar um
 
 1. Informe produtos, especificações, unidades e quantidades necessárias.
 2. Lance ofertas manualmente, cole mensagens ou importe PDFs com camada de texto.
-3. Confira a extração: embalagem, quantidade, preço sem e com impostos, fornecedor, equivalência e prazo da cotação. PDF digitalizado exige entrada manual; não há OCR ou integração de IA nesta versão.
+3. Confira a extração: embalagem, quantidade, preço sem e com impostos, fornecedor, equivalência . PDF digitalizado exige entrada manual; não há OCR ou integração de IA nesta versão.
 4. Confira o mínimo e o frete de cada fornecedor. Os 21 mínimos iniciais foram cadastrados, incluindo Nutrifarm (R$ 650).
 5. Calcule os pedidos, revise as redistribuições e aprove a geração dos arquivos.
 6. Baixe um PDF por fornecedor ou um ZIP com todos. O sistema não envia pedidos automaticamente.
@@ -18,7 +18,7 @@ Aplicação Vite para comparar cotações, respeitar pedidos mínimos e gerar um
 - Um fornecedor por item, embalagens inteiras. Arredondar a quantidade só é permitido quando habilitado no item. Não compra unidades extras só para completar o mínimo.
 - Pedido mínimo incide em produtos sem impostos e sem frete por padrão. Pode ser alterado para produtos com impostos. Frete nunca entra no mínimo.
 - Frete fixo por fornecedor entra uma vez no custo. Valor desconhecido é sinalizado e tratado como zero, sem presumir gratuidade.
-- Ofertas vencidas, indisponíveis ou não conferidas são excluídas. Cotação sem prazo deve ser confirmada pelo operador.
+- Ofertas indisponíveis ou não conferidas são excluídas. Datas de cotação são apenas informativas e não bloqueiam comparações ou pedidos.
 - Busca combinatória limitada a 1,5 milhão de nós / aproximadamente 2,5 segundos em um Web Worker. Só declara menor custo quando a busca termina; se o limite for atingido, informa solução válida sem garantia de ótimo ou busca inconclusiva.
 - Itens obrigatórios sem oferta e planos que não satisfazem mínimos bloqueiam PDFs. Não produz pedidos parciais silenciosamente.
 
