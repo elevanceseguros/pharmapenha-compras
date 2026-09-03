@@ -7,6 +7,18 @@ const num=n=>String(n).replace('.',',');
 const price=n=>(n/100).toFixed(2).replace('.',',');
 const initial=()=>({version:1,title:'Compra '+new Date().toLocaleDateString('pt-BR'),suppliers:structuredClone(defaultSuppliers),items:[],offers:[],buyer:{name:'Pharmapenha',cnpj:'',address:'',contact:'',notes:''}});
 let state=initial(),view='home',plan=null,approved=false,worker=null,draft=null,local=false;
+let pdfQueue=[],pdfIndex=0,pdfGeneration=0;
+async function nextPDF(){
+ const generation=++pdfGeneration;
+ if(pdfIndex>=pdfQueue.length){pdfQueue=[];draft=null;render();notice('Fila concluída. As cotações confirmadas foram adicionadas.');return}
+ const file=pdfQueue[pdfIndex];draft=null;
+ modal('Lendo PDF',`<p role="status">Arquivo ${pdfIndex+1} de ${pdfQueue.length}: ${esc(file.name)}</p><p>Extraindo texto. Aguarde…</p>`);
+ try{const text=await pdfText(file);if(generation!==pdfGeneration)return;showDraft(text)}catch(err){if(generation!==pdfGeneration)return;formError(err.message)}
+ if(generation!==pdfGeneration)return;
+ document.querySelector('#modal-body').insertAdjacentHTML('afterbegin',`<p class="storage">Arquivo ${pdfIndex+1} de ${pdfQueue.length} · ${esc(file.name)}</p>`);
+ document.querySelector('#modal-body').insertAdjacentHTML('beforeend',`<div class="actions">${btn('Pular este arquivo','skip-pdf')}</div>`);
+}
+function closeImport(){if(pdfQueue.length&&!confirm('Encerrar a importação dos arquivos restantes? As cotações já confirmadas serão mantidas.'))return;pdfGeneration++;pdfQueue=[];draft=null;document.querySelector('#modal').close()}
 try{if(localStorage.getItem('pharma-local-consent')==='yes'){const saved=localStorage.getItem('pharma-round');if(saved)state=validateState(JSON.parse(saved));local=true}}catch{}
 const root=document.querySelector('#app');
 const supplier=id=>state.suppliers.find(s=>s.id===id);
@@ -21,7 +33,7 @@ function table(headers,rows){return `<div class="table-scroll"><table><thead><tr
 function render(){
  const workspace=['items','offers','plan'].includes(view);
  const tabs=[['offers','1. Adicionar cotações'],['items','2. Conferir itens'],['plan','3. Pedidos e PDFs']];
- root.innerHTML=`<header><div><strong>Pharmapenha · Compras</strong><span>Comparar, organizar e fechar pedidos</span></div>${view!=='home'?`<div class="actions">${btn('Início','tab','home')}${hasQuote()?btn('Salvar cotação em arquivo','backup'):''}</div>`:''}</header>${workspace?`<nav aria-label="Etapas da cotação">${tabs.map(([v,t])=>`<button data-act="tab" data-id="${v}" aria-current="${view===v?'page':'false'}" class="${view===v?'active':''}">${t}</button>`).join('')}</nav>`:''}<main>${workspace?`<div class="bar"><h1>${esc(state.title)}</h1>${btn('Renomear','rename')}</div><p class="storage">${local?'Salvamento neste aparelho ativado. Não sincroniza com outros computadores.':'Dados desta sessão: salve a cotação em arquivo antes de fechar ou recarregar a página.'} <button data-act="tab" data-id="data">Configurar</button></p>`:''}<p id="notice" role="status" class="notice" hidden></p>${({home:homeView,items:itemsView,offers:offersView,plan:planView,suppliers:suppliersView,data:dataView}[view])()}${workspace?`<div class="actions secondary-tools">${btn('Fornecedores e mínimos','tab','suppliers')}${btn('Dados e backup','tab','data')}</div>`:view!=='home'&&hasQuote()?btn('Voltar à cotação','tab','offers'):''}</main><dialog id="modal"><div id="modal-body"></div></dialog><input type="file" id="restore-file" accept=".json" hidden><input type="file" id="pdf-file" accept="application/pdf" hidden>`;
+ root.innerHTML=`<header><div><strong>Pharmapenha · Compras</strong><span>Comparar, organizar e fechar pedidos</span></div>${view!=='home'?`<div class="actions">${btn('Início','tab','home')}${hasQuote()?btn('Salvar cotação em arquivo','backup'):''}</div>`:''}</header>${workspace?`<nav aria-label="Etapas da cotação">${tabs.map(([v,t])=>`<button data-act="tab" data-id="${v}" aria-current="${view===v?'page':'false'}" class="${view===v?'active':''}">${t}</button>`).join('')}</nav>`:''}<main>${workspace?`<div class="bar"><h1>${esc(state.title)}</h1>${btn('Renomear','rename')}</div><p class="storage">${local?'Salvamento neste aparelho ativado. Não sincroniza com outros computadores.':'Dados desta sessão: salve a cotação em arquivo antes de fechar ou recarregar a página.'} <button data-act="tab" data-id="data">Configurar</button></p>`:''}<p id="notice" role="status" class="notice" hidden></p>${({home:homeView,items:itemsView,offers:offersView,plan:planView,suppliers:suppliersView,data:dataView}[view])()}${workspace?`<div class="actions secondary-tools">${btn('Fornecedores e mínimos','tab','suppliers')}${btn('Dados e backup','tab','data')}</div>`:view!=='home'&&hasQuote()?btn('Voltar à cotação','tab','offers'):''}</main><dialog id="modal"><div id="modal-body"></div></dialog><input type="file" id="restore-file" accept=".json" hidden><input type="file" id="pdf-file" accept="application/pdf,.pdf" multiple hidden>`;
 }
 function hasQuote(){return Boolean(state.started||state.items.length||state.offers.length)}
 function homeView(){return `<div class="home"><section><h1>Suas cotações</h1><p>Comece uma compra ou abra uma cotação salva em arquivo.</p><div class="actions home-actions">${btn('+ Nova cotação','new-round','','primary')}${btn('Abrir cotação salva','restore')}</div></section>${hasQuote()?`<section><small>Cotação em andamento</small><h2>${esc(state.title)}</h2><p>${state.items.length} itens · ${state.offers.length} ofertas de fornecedores</p><div class="actions">${btn('Continuar cotação','tab','offers','primary')}${btn('Salvar em arquivo','backup')}</div><p class="hint">${local?'Salva neste aparelho. Guarde também uma cópia em arquivo.':'Disponível nesta sessão. Salve em arquivo antes de fechar a página.'}</p></section>`:''}<details><summary>Configurações</summary><div class="actions secondary-tools">${btn('Fornecedores e mínimos','tab','suppliers')}${btn('Dados e backup','tab','data')}</div></details></div>`}
@@ -32,7 +44,7 @@ function itemsView(){
 }
 function offersView(){
  const rows=state.offers.map(o=>{const i=state.items.find(x=>x.id===o.productId);const invalid=o.expires&&o.expires<today();const unit=o.grossCents/o.packQty;return `<tr><td>${esc(i?.name)}<small>${esc(o.description)}</small></td><td>${esc(supplier(o.supplierId)?.name)}<small>${esc(o.reference)}</small></td><td>${o.packQty} ${o.unit}</td><td>${money(o.grossCents)}<small>Sem impostos: ${money(o.netCents)}</small></td><td>${(unit/100).toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:6})} R$/${o.unit}</td><td>${o.available===false?'Indisponível':invalid?'Cotação vencida':o.reviewed?'Conferida':'Não conferida'}<small>${o.expires?esc(o.expires):'Prazo não informado'}</small></td><td class="actions">${btn('Editar','offer',o.id)}${btn('Excluir','remove-offer',o.id,'danger')}</td></tr>`});
- return `<section><div class="section-head"><div><h2>Cotações recebidas</h2><p>PDF com texto, mensagem copiada ou lançamento manual. Confira os valores antes de usar.</p></div><div class="actions">${btn('Importar PDF','pdf','','primary')}${btn('Colar mensagem','paste')}${btn('+ Oferta manual','offer')}</div></div>${rows.length?table(['Produto','Fornecedor','Embalagem','Preço da embalagem','Preço normalizado','Situação','Ações'],rows):'<div class="empty">Nenhuma cotação adicionada. Seus PDFs não são enviados para um servidor.</div>'}<p class="hint">Preço final inclui os impostos informados. O mínimo considera produtos sem impostos por padrão, sem frete; você pode alterar a base em Fornecedores. PDFs digitalizados precisam de entrada manual nesta versão.</p><div class="actions">${btn('Conferir itens →','tab','items','primary')}</div></section>`;
+ return `<section><div class="section-head"><div><h2>Cotações recebidas</h2><p>PDF com texto, mensagem copiada ou lançamento manual. Confira os valores antes de usar.</p></div><div class="actions">${btn('Importar PDFs','pdf','','primary')}${btn('Colar mensagem','paste')}${btn('+ Oferta manual','offer')}</div></div>${rows.length?table(['Produto','Fornecedor','Embalagem','Preço da embalagem','Preço normalizado','Situação','Ações'],rows):'<div class="empty">Nenhuma cotação adicionada. Seus PDFs não são enviados para um servidor.</div>'}<p class="hint">Preço final inclui os impostos informados. O mínimo considera produtos sem impostos por padrão, sem frete; você pode alterar a base em Fornecedores. PDFs digitalizados precisam de entrada manual nesta versão.</p><div class="actions">${btn('Conferir itens →','tab','items','primary')}</div></section>`;
 }
 function planView(){
  let content='';
@@ -65,7 +77,8 @@ function showDraft(text){draft=parseQuotation(text);if(!draft.rows.length){formE
 async function calculate(){if(worker)return;view='plan';approved=false;plan=null;worker=new Worker(new URL('./optimizer.worker.js',import.meta.url),{type:'module'});render();worker.onmessage=e=>{worker.terminate();worker=null;if(e.data.error){notice(e.data.error);return}plan=e.data.result;render()};worker.onerror=()=>{worker?.terminate();worker=null;render();notice('Falha no cálculo. Seus dados foram mantidos. Tente novamente.')};worker.postMessage({items:state.items,offers:state.offers,suppliers:state.suppliers})}
 async function action(act,id){
  if(act==='tab'){view=id;render()}
- if(act==='close')document.querySelector('#modal').close();
+ if(act==='close')closeImport();
+ if(act==='skip-pdf'){pdfIndex++;await nextPDF()}
  if(act==='item')itemForm(id);
  if(act==='offer')offerForm(id);
  if(act==='supplier')supplierForm(id);
@@ -86,8 +99,8 @@ root.addEventListener('change',async e=>{
  if(e.target.id==='approve'){approved=e.target.checked;render()}
  if(e.target.id==='local-save'){local=e.target.checked;try{localStorage.setItem('pharma-local-consent',local?'yes':'no');if(!local)localStorage.removeItem('pharma-round')}catch{}persist();render()}
  if(e.target.id==='pdf-file'){
-  const file=e.target.files[0];if(!file)return;modal('Lendo PDF','<p role="status">Extraindo texto no seu navegador. Aguarde…</p>');
-  try{const text=await pdfText(file);showDraft(text)}catch(err){formError(err.message)}
+  const files=Array.from(e.target.files);e.target.value='';if(!files.length)return;
+  pdfQueue=files;pdfIndex=0;await nextPDF();
  }
  if(e.target.id==='restore-file'){
   const file=e.target.files[0];if(!file)return;try{if(file.size>10*1024*1024)throw Error('Arquivo maior que 10 MB.');const s=validateState(JSON.parse(await file.text()));if(!hasQuote()||confirm('Abrir esta cotação e substituir a atual? Salve a atual em arquivo antes.')){state={...s,started:true};view='offers';changed()}}catch(err){notice(err.message)}
@@ -119,7 +132,9 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;const d=n
   });if(!count)throw Error('Selecione pelo menos uma linha.');state=validateState(next);draft=null;
  }
  document.querySelector('#modal').close();changed();
+ if(f.id==='draft-form'&&pdfQueue.length){pdfIndex++;nextPDF().catch(err=>formError(err.message))}
  if(f.id==='item-form'&&view==='offers')offerForm('');
 }catch(err){formError(err.message)}});
 window.addEventListener('beforeunload',e=>{if(!local&&(state.items.length||state.offers.length)){e.preventDefault();e.returnValue=''}});
+root.addEventListener('cancel',e=>{if(e.target.id==='modal'){e.preventDefault();closeImport()}},true);
 render();

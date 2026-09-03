@@ -28,14 +28,14 @@ export async function pdfText(file){
  const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
  const worker=(await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
  pdfjs.GlobalWorkerOptions.workerSrc=worker;
- const doc=await pdfjs.getDocument({data:await file.arrayBuffer(),isEvalSupported:false}).promise;const lines=[];
- try{if(doc.numPages>100)throw Error('Limite de 100 páginas por arquivo.');
+ const task=pdfjs.getDocument({data:await file.arrayBuffer(),isEvalSupported:false});const lines=[];
+ try{const doc=await task.promise;if(doc.numPages>100)throw Error('Limite de 100 páginas por arquivo.');
   for(let i=1;i<=doc.numPages;i++){
    const page=await doc.getPage(i);const content=await page.getTextContent();const rows=[];
    for(const item of content.items){if(!item.str?.trim())continue;const y=item.transform[5];let row=rows.find(r=>Math.abs(r.y-y)<2.2);if(!row){row={y,parts:[]};rows.push(row)}row.parts.push({x:item.transform[4],s:item.str})}
    rows.sort((a,b)=>b.y-a.y);rows.forEach(r=>lines.push(r.parts.sort((a,b)=>a.x-b.x).map(p=>p.s).join(' ')));
   }
- }finally{await doc.destroy()}
+ }finally{await task.destroy()}
  if(lines.join('').trim().length<30)throw Error('Este PDF parece digitalizado. Não há OCR nesta versão; copie ou digite os itens manualmente.');
  return lines.join('\n');
 }
