@@ -68,12 +68,12 @@ export function candidates(item,offers,suppliers,date=today()){
  }
  return out.sort((a,b)=>a.gross-b.gross||a.excess-b.excess);
 }
-export function ordersFor(lines,suppliers){
+export function ordersFor(lines,suppliers,ignoreMinimum=false){
  return suppliers.flatMap(s=>{
   const rows=lines.filter(r=>r.supplierId===s.id);if(!rows.length)return[];
   const net=rows.reduce((t,r)=>t+r.net,0),gross=rows.reduce((t,r)=>t+r.gross,0);
-  const basis=s.minimumBasis==='gross'?gross:net,exceptionProducts=[...new Set(rows.filter(r=>r.minimumException).map(r=>r.product))],shortfall=Math.max(0,s.minCents-basis),minimumException=shortfall>0&&exceptionProducts.length>0;
-  return [{supplier:s,lines:rows,net,gross,tax:gross-net,total:gross+s.freightCents,basis,valid:basis>=s.minCents||minimumException,shortfall,minimumException,exceptionProducts}];
+  const basis=s.minimumBasis==='gross'?gross:net,shortfall=Math.max(0,s.minCents-basis),meetsMinimum=shortfall===0;
+  return [{supplier:s,lines:rows,net,gross,tax:gross-net,total:gross+s.freightCents,basis,valid:ignoreMinimum||meetsMinimum,meetsMinimum,shortfall}];
  });
 }
 // Exact branch-and-bound within a bounded search. One supplier per requested item.
@@ -84,25 +84,24 @@ export function optimize(items,offers,suppliers,{maxNodes=1500000,maxMs=2500,dat
  const missing=groups.filter(g=>!g.options.length).map(g=>g.item.name);
  if(!groups.length)return {status:'empty',orders:[],lines:[],missing:[],optimal:false};
  if(missing.length)return {status:'missing',orders:[],lines:[],missing,optimal:false};
- for(const g of groups)if(new Set(g.options.map(o=>o.supplierId)).size===1)for(const o of g.options)o.minimumException=true;
  groups.sort((a,b)=>a.options.length-b.options.length);
  const mins=Object.fromEntries(suppliers.map(s=>[s.id,s.minCents]));
  const config=Object.fromEntries(suppliers.map(s=>[s.id,s]));
- const sums={},used={},exceptions={},chosen=[];let best=Infinity,bestLines=null,nodes=0,truncated=false;const start=Date.now();
+ const sums={},used={},chosen=[];let best=Infinity,bestLines=null,nodes=0,truncated=false;const start=Date.now();
  const lower=Array(groups.length+1).fill(0);for(let i=groups.length-1;i>=0;i--)lower[i]=lower[i+1]+groups[i].options[0].gross;
  const remaining=Array.from({length:groups.length+1},()=>({}));
- const remainingExceptions=Array.from({length:groups.length+1},()=>({}));
- for(let i=groups.length-1;i>=0;i--){remaining[i]={...remaining[i+1]};remainingExceptions[i]={...remainingExceptions[i+1]};const mx={};for(const o of groups[i].options){const v=config[o.supplierId].minimumBasis==='gross'?o.gross:o.net;mx[o.supplierId]=Math.max(mx[o.supplierId]||0,v);if(o.minimumException)remainingExceptions[i][o.supplierId]=true}for(const [s,v]of Object.entries(mx))remaining[i][s]=(remaining[i][s]||0)+v}
+ for(let i=groups.length-1;i>=0;i--){remaining[i]={...remaining[i+1]};const mx={};for(const o of groups[i].options){const v=config[o.supplierId].minimumBasis==='gross'?o.gross:o.net;mx[o.supplierId]=Math.max(mx[o.supplierId]||0,v)}for(const [s,v]of Object.entries(mx))remaining[i][s]=(remaining[i][s]||0)+v}
  function visit(i,cost){
   nodes++;if(nodes>maxNodes||(nodes%1024===0&&Date.now()-start>maxMs)){truncated=true;return}
   if(cost+lower[i]>=best)return;
-  for(const s of Object.keys(used))if(used[s]&&!exceptions[s]&&!remainingExceptions[i][s]&&(sums[s]||0)+(remaining[i][s]||0)<mins[s])return;
-  if(i===groups.length){if(Object.keys(used).some(s=>used[s]&&!exceptions[s]&&sums[s]<mins[s]))return;best=cost;bestLines=chosen.map(o=>({...o}));return}
-  for(const o of groups[i].options){if(truncated)return;const s=o.supplierId;const extra=used[s]?0:config[s].freightCents;const v=config[s].minimumBasis==='gross'?o.gross:o.net;used[s]=(used[s]||0)+1;sums[s]=(sums[s]||0)+v;if(o.minimumException)exceptions[s]=(exceptions[s]||0)+1;chosen.push(o);visit(i+1,cost+o.gross+extra);chosen.pop();if(o.minimumException)exceptions[s]--;sums[s]-=v;used[s]--;}
+  for(const s of Object.keys(used))if(used[s]&&(sums[s]||0)+(remaining[i][s]||0)<mins[s])return;
+  if(i===groups.length){if(Object.keys(used).some(s=>used[s]&&sums[s]<mins[s]))return;best=cost;bestLines=chosen.map(o=>({...o}));return}
+  for(const o of groups[i].options){if(truncated)return;const s=o.supplierId;const extra=used[s]?0:config[s].freightCents;const v=config[s].minimumBasis==='gross'?o.gross:o.net;used[s]=(used[s]||0)+1;sums[s]=(sums[s]||0)+v;chosen.push(o);visit(i+1,cost+o.gross+extra);chosen.pop();sums[s]-=v;used[s]--;}
  }
  visit(0,0);
  const baseline=groups.map(g=>g.options[0]);
- return {status:bestLines?'feasible':truncated?'inconclusive':'infeasible',optimal:!truncated&&!!bestLines,nodes,lines:bestLines||[],orders:bestLines?ordersFor(bestLines,suppliers):[],total:bestLines?best:null,baselineTotal:baseline.reduce((t,o)=>t+o.gross,0),baselineOrders:ordersFor(baseline,suppliers),changes:bestLines?bestLines.filter(o=>baseline.find(b=>b.itemId===o.itemId)?.offerId!==o.offerId).map(o=>({product:o.product,from:config[baseline.find(b=>b.itemId===o.itemId).supplierId].name,to:config[o.supplierId].name,difference:o.gross-baseline.find(b=>b.itemId===o.itemId).gross})):[],missing:[]};
+ const baselineOrders=ordersFor(baseline,suppliers,true),baselineTotal=baseline.reduce((t,o)=>t+o.gross,0),total=baselineOrders.reduce((t,o)=>t+o.total,0);
+ return {status:'feasible',optimal:true,nodes,lines:baseline,orders:baselineOrders,total,baselineTotal,baselineOrders,suggestedOrders:bestLines?ordersFor(bestLines,suppliers):[],suggestedTotal:bestLines?best:null,suggestionStatus:bestLines?'feasible':truncated?'inconclusive':'infeasible',changes:bestLines?bestLines.filter(o=>baseline.find(b=>b.itemId===o.itemId)?.offerId!==o.offerId).map(o=>({product:o.product,from:config[baseline.find(b=>b.itemId===o.itemId).supplierId].name,to:config[o.supplierId].name,difference:o.gross-baseline.find(b=>b.itemId===o.itemId).gross})):[],missing:[]};
 }
 export function validateState(s){
  if(!s||s.version!==1||!Array.isArray(s.suppliers)||!Array.isArray(s.items)||!Array.isArray(s.offers))throw Error('Arquivo de rodada inválido.');
