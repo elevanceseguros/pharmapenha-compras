@@ -7,7 +7,7 @@ test('extrai PDFs consecutivos e encerra a tarefa sem doc.destroy',async()=>{
  const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
  // Exercise the production function, replacing only Vite's worker URL import.
  const source=readFileSync(new URL('../src/import.js',import.meta.url),'utf8');
- const body=source.slice(source.indexOf('export async function pdfText')).replace('export async function','async function')
+ const body=source.slice(source.indexOf('export async function pdfText'),source.indexOf('let ocrWorker')).replace('export async function','async function')
   .replace("const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');",'')
   .replace("const worker=(await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;",'const worker=workerURL;');
  const readPDF=new Function('pdfjs','workerURL',body+';return pdfText;')(pdfjs,new URL('../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',import.meta.url).href);

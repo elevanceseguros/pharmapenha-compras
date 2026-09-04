@@ -39,6 +39,32 @@ export async function pdfText(file){
    rows.sort((a,b)=>b.y-a.y);rows.forEach(r=>lines.push(r.parts.sort((a,b)=>a.x-b.x).map(p=>p.s).join(' ')));
   }
  }finally{await task.destroy()}
- if(lines.join('').trim().length<30)throw Error('Este PDF parece digitalizado. Não há OCR nesta versão; copie ou digite os itens manualmente.');
+ if(lines.join('').trim().length<30)throw Error('PDF_DIGITALIZADO');
  return lines.join('\n');
+}
+let ocrWorker,ocrProgress;
+async function worker(onProgress){
+ ocrProgress=onProgress;
+ if(!ocrWorker){const {createWorker}=await import('tesseract.js');ocrWorker=await createWorker('por',1,{logger:m=>{if(m.status==='recognizing text')ocrProgress?.(Math.round((m.progress||0)*100))}})}
+ return ocrWorker;
+}
+export async function imageText(file,onProgress){
+ if(file.size>20*1024*1024)throw Error('A imagem excede 20 MB. Envie uma foto menor.');
+ const w=await worker(onProgress),result=await w.recognize(file);const text=result.data.text.trim();
+ if(text.length<20)throw Error('Não consegui ler texto suficiente nesta imagem. Tente uma foto mais nítida, reta e bem iluminada.');
+ return text;
+}
+async function scannedPDFText(file,onProgress){
+ const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');const workerURL=(await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;pdfjs.GlobalWorkerOptions.workerSrc=workerURL;
+ const task=pdfjs.getDocument({data:await file.arrayBuffer(),isEvalSupported:false});const texts=[];
+ try{const doc=await task.promise;if(doc.numPages>20)throw Error('PDF digitalizado com mais de 20 páginas. Divida o documento para usar o reconhecimento de imagem.');
+  const ocr=await worker();for(let i=1;i<=doc.numPages;i++){ocrProgress=p=>onProgress?.({page:i,pages:doc.numPages,percent:p});onProgress?.({page:i,pages:doc.numPages,percent:0});const page=await doc.getPage(i),viewport=page.getViewport({scale:2}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const result=await ocr.recognize(canvas,{}, {text:true});texts.push(result.data.text);onProgress?.({page:i,pages:doc.numPages,percent:100})}
+ }finally{await task.destroy()}
+ const text=texts.join('\n').trim();if(text.length<20)throw Error('Não consegui ler texto suficiente neste PDF escaneado. Tente um arquivo mais nítido.');return text;
+}
+export async function quotationText(file,onProgress){
+ const type=String(file.type||'').toLowerCase(),name=String(file.name||'').toLowerCase();
+ if(type.startsWith('image/')||/\.(png|jpe?g|webp|bmp|tiff?)$/.test(name))return imageText(file,p=>onProgress?.({percent:p}));
+ if(type==='application/pdf'||name.endsWith('.pdf')){try{return await pdfText(file)}catch(err){if(err.message!=='PDF_DIGITALIZADO')throw err;return scannedPDFText(file,onProgress)}}
+ throw Error('Formato não aceito. Envie PDF, JPG, PNG, WEBP, BMP ou TIFF.');
 }
