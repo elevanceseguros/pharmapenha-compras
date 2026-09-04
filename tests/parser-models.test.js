@@ -16,6 +16,13 @@ test('reconhece os novos modelos de cotação enviados',()=>{
  for(const [supplier,text,count,name,qty,gross] of samples){const p=parseQuotation(text);assert.equal(p.detected,supplier);assert.equal(p.rows.length,count);assert.equal(p.rows[0].description,name);assert.equal(p.rows[0].qty,qty);assert.equal(p.rows[0].gross,gross)}
 });
 
+test('reconhece Embrafarma e o modelo completo de copiar e colar',()=>{
+ const premium=parseQuotation('ALLPREMIUM Industria e Comércio Ltda.\n001 Calcio Citrato Malato-ccm 1kg 1 KG 82,00 0,00 0% 82,00 07/2028 Brasil - 0142606539\n002 Lactobacillus Gasseri Bsr 50gr 50 GR 1,20 0,00 0% 60,00 05/2028 Brasil - -');
+ assert.equal(premium.detected,'Embrafarma (All Premium)');assert.equal(premium.reference,'');assert.equal(premium.rows.length,2);assert.equal(premium.rows[0].qty,1000);assert.equal(premium.rows[1].gross,6000);
+ const typed=parseQuotation('Produto | Embalagem | Preço sem impostos | Preço final\nÁcido Lático 85% | 1 kg | 34,57 | 34,57\nCondroitina Sulfato | 500 g | 100,00 | 103,25');
+ assert.equal(typed.rows.length,2);assert.equal(typed.rows[0].qty,1000);assert.equal(typed.rows[1].net,10000);assert.equal(typed.rows[1].gross,10325);
+});
+
 test('reconhece texto imperfeito de foto e mantém conferência posterior',()=>{
  const p=parseQuotation('lriclOMag\nICondroitina Sulfato De Sédio 1 Kg 276,130___276,13 3,25% USA 03/05/29\nPnfarma\nFRutina 70% BRASIL 0,250 KG 0,250 04/2023, 170,00 42,50');
  assert.equal(p.rows.length,2);assert.equal(p.rows[0].gross,27613);assert.equal(p.rows[1].qty,250);

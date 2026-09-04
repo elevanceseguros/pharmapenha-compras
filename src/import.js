@@ -1,8 +1,8 @@
 import {decimal,quantity} from './core.js';
 export function parseQuotation(text){
  const rows=[],unparsed=[];let detected='';
- if(/sovita/i.test(text))detected='Sovita';else if(/infinitypharma|infinity pharma/i.test(text))detected='Infinity Pharma';else if(/pnfarma|pn farmac/i.test(text))detected='PN farma';else if(/biovital/i.test(text))detected='Biovital';else if(/galena qu[ií]mica|galena digital/i.test(text))detected='Galena';else if(/purifarma/i.test(text))detected='Purifarma';else if(/exata (?:suprimentos|suprmentos|distribui)/i.test(text))detected='Exata';else if(/irial ?mag|lri[ca]l.?mag/i.test(text))detected='Irial Mag';else if(/valdequ/i.test(text))detected='Valdequimica';
- const ref=text.match(/(?:Cotação Nº:|Número da proposta[^:]*:)\s*([^\s]+)/i)?.[1]||'';
+ if(/sovita/i.test(text))detected='Sovita';else if(/infinitypharma|infinity pharma/i.test(text))detected='Infinity Pharma';else if(/pnfarma|pn farmac/i.test(text))detected='PN farma';else if(/biovital/i.test(text))detected='Biovital';else if(/galena qu[ií]mica|galena digital/i.test(text))detected='Galena';else if(/purifarma/i.test(text))detected='Purifarma';else if(/exata (?:suprimentos|suprmentos|distribui)/i.test(text))detected='Exata';else if(/irial ?mag|lri[ca]l.?mag/i.test(text))detected='Irial Mag';else if(/valdequ/i.test(text))detected='Valdequimica';else if(/allpremium|embrafarma/i.test(text))detected='Embrafarma (All Premium)';else if(/fracionamento.*encargos|pre[cç]o g\/mlh|66111091[-.]979/i.test(text))detected='Caldic';
+ const ref=text.match(/(?:Cotação\s*(?:N[º°o.:]|[-:])?|Número da proposta[^:]*:)\s*([^\s]+)/i)?.[1]||'';
  const dateRaw=text.match(/(?:Data da Cotação:|Data da Criação:|Data da Emissão[^:]*:)\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1];
  let expires='';const explicit=text.match(/Validade da proposta[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1];
  const iso=v=>v.split('/').reverse().join('-');
@@ -14,6 +14,12 @@ export function parseQuotation(text){
  let pending='';const fractionNames=new Map();
  for(const raw of sourceLines){
   const line=raw.replace(/\s+/g,' ').replace(/\s+[–—-]\s+Sug\.\s+\w+/i,'').trim();if(!line)continue;
+  // Modelo Embrafarma / All Premium: quantidade, unidade, unitário e total final.
+  const premium=line.match(/^\d+\s+(.*?)\s+([\d.,]+)\s+(KG|GR|G|L|ML|UN)\s+([\d.,]+)\s+[\d.,]+\s+\d+(?:[.,]\d+)?%\s+([\d.,]+)\s+(\d{2}\/\d{4})/i);
+  if(premium){add(premium[1],premium[2],premium[3].replace(/^GR$/i,'G'),premium[5],premium[5],{validity:premium[6],source:line});continue}
+  // Texto digitado em colunas: produto | embalagem | sem impostos | final.
+  const typed=line.match(/^(.*?)\s*[|;]\s*([\d.,]+)\s*(KG|G|GR|MLH|MIL|ML|L|UN)\s*[|;]\s*(?:R\$\s*)?([\d.]+(?:,\d{1,2})?)(?:\s*[|;]\s*(?:R\$\s*)?([\d.]+(?:,\d{1,2})?))?\s*$/i);
+  if(typed&&!/produto|embalagem|pre[cç]o/i.test(typed[1])){add(typed[1],typed[2],typed[3].replace(/^GR$/i,'G'),typed[4],typed[5]||typed[4],{source:line});continue}
   // Purifarma: quantidade de embalagens, tamanho da embalagem, preços unitário/total e total com impostos.
   const puri=line.match(/^(.*?)\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.,]+)\s+([\d.,]+)\s*(KG|G|MLH|MIL|ML|L|UN)\s+R\$\s*[\d.,]+\s+R\$\s*([\d.,]+)\s+R\$\s*[\d.,]+.*?R\$\s*([\d.,]+)\s*$/i);
   if(puri){const packs=decimal(puri[3]);add(puri[1],puri[4],puri[5],puri[6],decimal(puri[7])/packs,{quotedPacks:packs,validity:puri[2],source:line});continue}
@@ -76,7 +82,7 @@ export async function pdfText(file){
 let ocrWorker,ocrProgress;
 async function worker(onProgress){
  ocrProgress=onProgress;
- if(!ocrWorker){const {createWorker}=await import('tesseract.js');ocrWorker=await createWorker('por',1,{logger:m=>{if(m.status==='recognizing text')ocrProgress?.(Math.round((m.progress||0)*100))}})}
+ if(!ocrWorker){const {createWorker}=await import('tesseract.js'),langPath=new URL('tessdata',document.baseURI).href.replace(/\/$/,'');ocrWorker=await createWorker('por',1,{langPath,logger:m=>{if(m.status==='recognizing text')ocrProgress?.(Math.round((m.progress||0)*100))}})}
  return ocrWorker;
 }
 export async function imageText(file,onProgress){
