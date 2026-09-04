@@ -30,3 +30,16 @@ export function orderPDF(order,buyer,round,date=new Date()){
 }
 export function download(bytes,name,type='application/pdf'){const url=URL.createObjectURL(new Blob([bytes],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 export function allPDFs(orders,buyer,round){const files={};orders.forEach((o,i)=>{files[`${i+1}-Pedido-${slug(o.supplier.name)}.pdf`]=orderPDF(o,buyer,round)});return zipSync(files)}
+export function internalReportPDF(orders,audit,round,date=new Date()){
+ const doc=new jsPDF();let y=20;const text=(s,x,yy,opt)=>doc.text(clean(s),x,yy,opt);
+ function header(){doc.setFont('helvetica','bold');doc.setFontSize(17);text('RELATÓRIO INTERNO DA COMPRA',15,18);doc.setFontSize(11);text('USO INTERNO - PHARMAPENHA',15,26);doc.setFont('helvetica','normal');doc.setFontSize(9);text(`${round} | ${date.toLocaleDateString('pt-BR')}`,15,33);y=43}
+ function page(){doc.addPage();header()}
+ function para(s,bold=false){doc.setFont('helvetica',bold?'bold':'normal');for(const line of doc.splitTextToSize(clean(s),179)){if(y>270)page();text(line,15,y);y+=5}}
+ header();para('Justificativas das ofertas desconsideradas para produtos efetivamente comprados. Este documento não deve ser enviado aos fornecedores.');y+=5;
+ const chosen=new Map();for(const order of orders)for(const line of order.lines)chosen.set(line.itemId,{line,supplier:order.supplier});
+ const excluded=(audit.offers||[]).filter(o=>o.considered===false&&chosen.has(o.productId));
+ for(const o of excluded){const picked=chosen.get(o.productId),item=(audit.items||[]).find(i=>i.id===o.productId),supplier=(audit.suppliers||[]).find(s=>s.id===o.supplierId);if(y>235)page();doc.setFillColor(230,239,246);doc.rect(15,y-5,180,10,'F');para(item?.name||picked.line.product||o.description,true);para(`Comprado de: ${picked.supplier.name} | ${picked.line.packs} x ${picked.line.packQty} ${picked.line.unit} | ${money(picked.line.gross)}`);para(`Oferta desconsiderada: ${supplier?.name||'Fornecedor'} | ${money(o.grossCents)} por ${o.packQty} ${o.unit}`);para(`Motivo: ${o.exclusionReason}`,true);y+=5}
+ if(!excluded.length)para('Nenhuma oferta desconsiderada relacionada aos produtos comprados.');
+ const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);text(`Página ${i} de ${n}`,195,286,{align:'right'})}
+ return new Uint8Array(doc.output('arraybuffer'));
+}

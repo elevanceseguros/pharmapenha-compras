@@ -56,7 +56,7 @@ export function candidates(item,offers,suppliers,date=today()){
  const out=[];
  if(!Number.isFinite(item.qty)||item.qty<=0)return out;
  for(const o of offers){
-  if(o.productId!==item.id||o.unit!==item.unit||o.available===false||o.reviewed!==true||!suppliers.some(s=>s.id===o.supplierId))continue;
+  if(o.productId!==item.id||o.unit!==item.unit||o.available===false||o.considered===false||o.reviewed!==true||!suppliers.some(s=>s.id===o.supplierId))continue;
   if(item.lock&&o.supplierId!==item.lock)continue;
   if(!Number.isFinite(o.packQty)||o.packQty<=0||!Number.isSafeInteger(o.netCents)||o.netCents<=0||!Number.isSafeInteger(o.grossCents)||o.grossCents<o.netCents)continue;
   const ratio=item.qty/o.packQty;const packs=Math.ceil(ratio-1e-9);
@@ -109,6 +109,7 @@ export function validateState(s){
  for(const x of s.suppliers)if(typeof x.name!=='string'||!Number.isSafeInteger(x.minCents)||x.minCents<0||!Number.isSafeInteger(x.freightCents)||x.freightCents<0||!['net','gross'].includes(x.minimumBasis))throw Error('Cadastro de fornecedor inválido.');
  for(const x of s.items)if(typeof x.name!=='string'||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.qty)||x.qty<=0)throw Error('Item inválido.');
  for(const x of s.offers)if(!s.items.some(i=>i.id===x.productId)||!s.suppliers.some(a=>a.id===x.supplierId)||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.packQty)||x.packQty<=0||!Number.isSafeInteger(x.netCents)||x.netCents<0||!Number.isSafeInteger(x.grossCents)||x.grossCents<x.netCents)throw Error('Oferta inválida.');
+ for(const x of s.offers)if(x.considered===false&&String(x.exclusionReason||'').trim().length<10)throw Error('Oferta desconsiderada sem motivo suficiente.');
  if(s.productAliases!=null&&(!Array.isArray(s.productAliases)||s.productAliases.length>1000||s.productAliases.some(a=>!a||typeof a.alias!=='string'||typeof a.canonical!=='string')))throw Error('Equivalências de produtos inválidas.');
  s.productAliases??=[];
  if(s.ignoredEquivalences!=null&&(!Array.isArray(s.ignoredEquivalences)||s.ignoredEquivalences.length>2000||s.ignoredEquivalences.some(x=>typeof x!=='string')))throw Error('Decisões de equivalência inválidas.');
