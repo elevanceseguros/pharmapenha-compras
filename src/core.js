@@ -3,6 +3,29 @@ export const defaultSuppliers = [
 ].map(([name,min],i)=>({id:`s${i+1}`,name,minCents:min*100,freightCents:0,freightKnown:false,minimumBasis:'net'}));
 export const money = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 export const normalize = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+export function productKey(name,aliases=[]){
+ const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo');
+ const learned=aliases.find(a=>normalize(a.alias)===raw);
+ if(learned&&normalize(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
+ return raw
+  .replace(/\b\d+(?:[.,]\d+)?\s*(?:por cento)?\b/g,' ')
+  .replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ')
+  .replace(/\b(?:extrato seco|ext seco|extrato|em po|po)\b/g,' ')
+  .replace(/\b(?:anidro|anidra|hidratado|hidratada|monohidratado|monohidratada|dihidratado|dihidratada|trihidratado|trihidratada|tetrahidratado|tetrahidratada|tetrahidrata|tetrahidrato)\b/g,' ')
+  .replace(/\s+/g,' ').trim();
+}
+export const equivalentProduct=(a,b,aliases=[])=>productKey(a,aliases)===productKey(b,aliases);
+export function aggregateEquivalentItems(state){
+ const next=structuredClone(state),aliases=next.productAliases||[],groups=new Map();
+ for(const item of next.items){
+  const key=`${item.unit}:${productKey(item.name,aliases)}`,target=groups.get(key);
+  if(!target){groups.set(key,item);continue}
+  target.qty=Math.max(target.qty,item.qty);target.enabled=target.enabled!==false||item.enabled!==false;target.allowExcess=Boolean(target.allowExcess||item.allowExcess);if(target.lock!==item.lock)target.lock='';
+  for(const offer of next.offers)if(offer.productId===item.id)offer.productId=target.id;
+  next.items=next.items.filter(x=>x.id!==item.id);
+ }
+ return next;
+}
 export function decimal(s){
  if(typeof s==='number')return s;
  const v=String(s).trim().replace(/R\$/g,'').replace(/\s/g,'');
@@ -73,5 +96,7 @@ export function validateState(s){
  for(const x of s.suppliers)if(typeof x.name!=='string'||!Number.isSafeInteger(x.minCents)||x.minCents<0||!Number.isSafeInteger(x.freightCents)||x.freightCents<0||!['net','gross'].includes(x.minimumBasis))throw Error('Cadastro de fornecedor inválido.');
  for(const x of s.items)if(typeof x.name!=='string'||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.qty)||x.qty<=0)throw Error('Item inválido.');
  for(const x of s.offers)if(!s.items.some(i=>i.id===x.productId)||!s.suppliers.some(a=>a.id===x.supplierId)||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.packQty)||x.packQty<=0||!Number.isSafeInteger(x.netCents)||x.netCents<0||!Number.isSafeInteger(x.grossCents)||x.grossCents<x.netCents)throw Error('Oferta inválida.');
+ if(s.productAliases!=null&&(!Array.isArray(s.productAliases)||s.productAliases.length>1000||s.productAliases.some(a=>!a||typeof a.alias!=='string'||typeof a.canonical!=='string')))throw Error('Equivalências de produtos inválidas.');
+ s.productAliases??=[];
  return s;
 }

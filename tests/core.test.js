@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSuppliers,optimize,quantity,candidates,ordersFor,validateState} from '../src/core.js';
+import {defaultSuppliers,optimize,quantity,candidates,ordersFor,validateState,productKey,equivalentProduct,aggregateEquivalentItems} from '../src/core.js';
 import {parseQuotation} from '../src/import.js';
 const supplier=(id,min=0,freight=0)=>({id,name:id,minCents:min,freightCents:freight,minimumBasis:'net',freightKnown:true});
 const item=(id,qty=100)=>({id,name:id,qty,unit:'g',allowExcess:false});
@@ -37,4 +37,19 @@ test('milheiro e unidades comparam cápsulas sem misturar volume',()=>{
 });
 test('parser aceita preço por kg quebrado sem perder preço da embalagem',()=>{
  const r=parseQuotation('Produto exemplo China 30/04/2029 1,00 5 G R$110.000, R$550,00 R$550,00 0,00 0,00 R$550,00').rows[0];assert.equal(r.net,55000);assert.equal(r.gross,55000);assert.equal(r.qty,5);
+});
+test('agregador reconhece insumo-base e preserva sais diferentes',()=>{
+ assert.equal(equivalentProduct('Citrato de Cálcio','Citrato de Calcio Tetrahidrata'),true);
+ assert.equal(equivalentProduct('Gingko biloba','Ginkgo biloba 28%'),true);
+ assert.equal(equivalentProduct('Espinheira Santa Extrato','Espinheira Santa Extrato Seco'),true);
+ assert.equal(equivalentProduct('Magnésio Quelato 20%','Magnesio Quelato 25%'),true);
+ assert.equal(equivalentProduct('Aspartato de Magnésio','Magnésio Taurato'),false);
+ assert.notEqual(productKey('Magnésio Citrato'),productKey('Magnésio Taurato'));
+});
+test('agregador reúne ofertas sem somar a necessidade duplicada',()=>{
+ const state={version:1,productAliases:[],suppliers:[supplier('X'),supplier('Y')],items:[{...item('a'),name:'Gingko biloba',qty:100},{...item('b'),name:'Ginkgo biloba 28%',qty:200}],offers:[offer('1','a','X',10000),offer('2','b','Y',18000)]};
+ const grouped=aggregateEquivalentItems(state);assert.equal(grouped.items.length,1);assert.equal(grouped.items[0].qty,200);assert.equal(new Set(grouped.offers.map(o=>o.productId)).size,1);assert.equal(grouped.offers.length,2);
+});
+test('equivalência aprendida relaciona nomes fora do padrão',()=>{
+ const aliases=[{alias:'Nome comercial XPTO',canonical:'Espinheira Santa'}];assert.equal(equivalentProduct('Nome comercial XPTO','Espinheira Santa Extrato Seco',aliases),true);
 });
