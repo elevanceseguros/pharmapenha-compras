@@ -7,14 +7,27 @@ export function productKey(name,aliases=[]){
  const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo');
  const learned=aliases.find(a=>normalize(a.alias)===raw);
  if(learned&&normalize(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
- return raw
+ const simplified=raw
   .replace(/\b\d+(?:[.,]\d+)?\s*(?:por cento)?\b/g,' ')
   .replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ')
-  .replace(/\b(?:extrato seco|ext seco|extrato|em po|po)\b/g,' ')
+  .replace(/\b(?:extrato seco|ext seco|e s|extrato|em po|po)\b/g,' ')
   .replace(/\b(?:anidro|anidra|hidratado|hidratada|monohidratado|monohidratada|dihidratado|dihidratada|trihidratado|trihidratada|tetrahidratado|tetrahidratada|tetrahidrata|tetrahidrato)\b/g,' ')
   .replace(/\s+/g,' ').trim();
+ let catalog=materialSynonyms[raw];
+ if(!catalog||catalog===raw)catalog=materialSynonyms[simplified];
+ if(catalog&&catalog!==raw&&catalog!==simplified)return productKey(catalog,aliases);
+ return simplified;
 }
 export const equivalentProduct=(a,b,aliases=[])=>productKey(a,aliases)===productKey(b,aliases);
+export const synonymStats={materials:new Set(Object.values(materialSynonyms)).size,names:Object.keys(materialSynonyms).length,ambiguous:Object.keys(materialSynonymConflicts).length};
+export function productSimilarity(a,b,aliases=[]){
+ if(equivalentProduct(a,b,aliases))return 1;
+ const stop=new Set(['de','da','do','das','dos','e','para','com','como']);
+ const tokens=s=>new Set(productKey(s,aliases).split(' ').filter(x=>x.length>1&&!stop.has(x)));
+ const x=tokens(a),y=tokens(b);if(!x.size||!y.size)return 0;
+ const common=[...x].filter(t=>y.has(t)).length;
+ return common/Math.max(x.size,y.size);
+}
 export function aggregateEquivalentItems(state){
  const next=structuredClone(state),aliases=next.productAliases||[],groups=new Map();
  for(const item of next.items){
@@ -98,5 +111,8 @@ export function validateState(s){
  for(const x of s.offers)if(!s.items.some(i=>i.id===x.productId)||!s.suppliers.some(a=>a.id===x.supplierId)||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.packQty)||x.packQty<=0||!Number.isSafeInteger(x.netCents)||x.netCents<0||!Number.isSafeInteger(x.grossCents)||x.grossCents<x.netCents)throw Error('Oferta inválida.');
  if(s.productAliases!=null&&(!Array.isArray(s.productAliases)||s.productAliases.length>1000||s.productAliases.some(a=>!a||typeof a.alias!=='string'||typeof a.canonical!=='string')))throw Error('Equivalências de produtos inválidas.');
  s.productAliases??=[];
+ if(s.ignoredEquivalences!=null&&(!Array.isArray(s.ignoredEquivalences)||s.ignoredEquivalences.length>2000||s.ignoredEquivalences.some(x=>typeof x!=='string')))throw Error('Decisões de equivalência inválidas.');
+ s.ignoredEquivalences??=[];
  return s;
 }
+import {materialSynonyms,materialSynonymConflicts} from './synonyms.generated.js';

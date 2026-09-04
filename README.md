@@ -14,7 +14,8 @@ Aplicação Vite para comparar cotações, respeitar pedidos mínimos e gerar um
 ## Regras
 
 - Valores monetários calculados em centavos. Preço da embalagem é convertido para preço por g, ml ou unidade.
-- Agrega nomes pelo insumo-base: teor/porcentagem, “extrato seco” e hidratação não separam ofertas. Sais e formas químicas diferentes continuam separados. Associações corrigidas na importação ficam aprendidas na cotação e no backup.
+- Agrega nomes pelo insumo-base: teor/porcentagem, “extrato seco” e hidratação não separam ofertas. Sais e formas químicas diferentes continuam separados. A base inicial foi gerada exclusivamente do grupo Matéria-prima do relatório Pharmapenha (3.287 cadastros, 4.685 nomes seguros e 76 nomes ambíguos não associados automaticamente).
+- Associações corrigidas na importação ficam aprendidas na cotação e no backup. Possíveis equivalências aparecem para decisão humana; “Unificar” aprende a associação e “Manter separados” evita repetir o alerta. O mapa de revisão pode ser baixado em JSON.
 - Um fornecedor por item, embalagens inteiras. Arredondar a quantidade só é permitido quando habilitado no item. Não compra unidades extras só para completar o mínimo.
 - Pedido mínimo incide em produtos sem impostos e sem frete por padrão. Pode ser alterado para produtos com impostos. Frete nunca entra no mínimo.
 - Frete fixo por fornecedor entra uma vez no custo. Valor desconhecido é sinalizado e tratado como zero, sem presumir gratuidade.

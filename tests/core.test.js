@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultSuppliers,optimize,quantity,candidates,ordersFor,validateState,productKey,equivalentProduct,aggregateEquivalentItems} from '../src/core.js';
 import {parseQuotation} from '../src/import.js';
+import {materialSynonyms} from '../src/synonyms.generated.js';
 const supplier=(id,min=0,freight=0)=>({id,name:id,minCents:min,freightCents:freight,minimumBasis:'net',freightKnown:true});
 const item=(id,qty=100)=>({id,name:id,qty,unit:'g',allowExcess:false});
 const offer=(id,productId,supplierId,gross,packQty=100)=>({id,productId,supplierId,packQty,unit:'g',netCents:gross,grossCents:gross,reviewed:true,available:true});
@@ -53,3 +54,15 @@ test('agregador reúne ofertas sem somar a necessidade duplicada',()=>{
 test('equivalência aprendida relaciona nomes fora do padrão',()=>{
  const aliases=[{alias:'Nome comercial XPTO',canonical:'Espinheira Santa'}];assert.equal(equivalentProduct('Nome comercial XPTO','Espinheira Santa Extrato Seco',aliases),true);
 });
+test('base Pharmapenha usa somente sinônimos de matérias-primas',()=>{
+ assert.equal(Object.keys(materialSynonyms).length,4685);
+ assert.equal(materialSynonyms['balde bco 10lt'],undefined);
+ assert.equal(materialSynonyms['tadalafila 5mg 60 capsulas'],undefined);
+ assert.equal(equivalentProduct('Taraxacum officinale','Dente de Leão Extrato Seco'),true);
+ assert.equal(equivalentProduct('Tongkat Ali Extrato Seco','Long Jack'),true);
+ assert.equal(equivalentProduct('Maytenus ilicifolia','Espinheira Santa Extrato'),true);
+ assert.equal(equivalentProduct('Quitina diacetilada','Quitosana'),true);
+ assert.equal(equivalentProduct('Ginkgo Biloba Extrato Seco','Gingko Biloba 28%'),true);
+ assert.equal(equivalentProduct('Cálcio','Cálcio Bisglicinato'),false);
+});
+test('todos os nomes da base podem ser normalizados sem ciclos',()=>{for(const name of Object.keys(materialSynonyms))assert.doesNotThrow(()=>productKey(name))});
