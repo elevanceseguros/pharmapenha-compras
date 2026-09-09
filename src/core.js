@@ -79,6 +79,30 @@ export function ordersFor(lines,suppliers,ignoreMinimum=false){
 export function lowestSelections(choices){
  const best=new Map();for(const c of choices||[]){const old=best.get(c.itemId);if(!old||c.gross<old.gross||(c.gross===old.gross&&(c.excess||0)<(old.excess||0)))best.set(c.itemId,c)}return Object.fromEntries([...best].map(([itemId,c])=>[itemId,c.offerId]));
 }
+export function choiceHighlights(choices){
+ const groups=new Map(),result={};
+ for(const c of choices||[]){
+  if(!groups.has(c.itemId))groups.set(c.itemId,[]);
+  groups.get(c.itemId).push(c);
+ }
+ for(const rows of groups.values()){
+  const unitBest=rows.reduce((a,b)=>b.pricePerUnit<a.pricePerUnit?b:a),
+        outlayBest=rows.reduce((a,b)=>b.gross<a.gross?b:a),
+        minUnit=unitBest.pricePerUnit,
+        minOutlay=outlayBest.gross;
+  for(const c of rows){
+   const lowestUnit=Math.abs(c.pricePerUnit-minUnit)<1e-9,
+         lowestOutlay=c.gross===minOutlay;
+   result[c.offerId]={
+    lowestUnit,
+    lowestOutlay,
+    unitPremiumPercent:lowestOutlay&&!lowestUnit?Math.round((c.pricePerUnit/minUnit-1)*1000)/10:0,
+    savingsAgainstUnitBest:lowestOutlay&&!lowestUnit?Math.max(0,unitBest.gross-c.gross):0
+   };
+  }
+ }
+ return result;
+}
 // Exact branch-and-bound within a bounded search. One supplier per requested item.
 // A truncated search is explicitly not a proof of optimality or infeasibility.
 export function optimize(items,offers,suppliers,{maxNodes=1500000,maxMs=2500,date=today()}={}){
