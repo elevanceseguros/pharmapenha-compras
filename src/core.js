@@ -76,6 +76,9 @@ export function ordersFor(lines,suppliers,ignoreMinimum=false){
   return [{supplier:s,lines:rows,net,gross,tax:gross-net,total:gross+s.freightCents,basis,valid:ignoreMinimum||meetsMinimum,meetsMinimum,shortfall}];
  });
 }
+export function lowestSelections(choices){
+ const best=new Map();for(const c of choices||[]){const old=best.get(c.itemId);if(!old||c.gross<old.gross||(c.gross===old.gross&&(c.excess||0)<(old.excess||0)))best.set(c.itemId,c)}return Object.fromEntries([...best].map(([itemId,c])=>[itemId,c.offerId]));
+}
 // Exact branch-and-bound within a bounded search. One supplier per requested item.
 // A truncated search is explicitly not a proof of optimality or infeasibility.
 export function optimize(items,offers,suppliers,{maxNodes=1500000,maxMs=2500,date=today()}={}){
