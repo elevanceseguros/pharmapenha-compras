@@ -7,8 +7,11 @@ export function productKey(name,aliases=[]){
  const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo');
  const learned=aliases.find(a=>normalize(a.alias)===raw);
  if(learned&&normalize(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
- const simplified=raw
-  .replace(/\b\d+(?:[.,]\d+)?\s*(?:por cento)?\b/g,' ')
+	 const simplified=raw
+	  .replace(/\bp\s*\d+\b/g,' ')
+	  .replace(/\b(?:hcl|hidrocloreto|cloridrato)\b/g,' ')
+	  .replace(/\b(?:de|da|do|das|dos)\b/g,' ')
+	  .replace(/\b\d+(?:[.,]\d+)?\s*(?:por cento)?\b/g,' ')
   .replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ')
   .replace(/\b(?:extrato seco|ext seco|e s|extrato|em po|po)\b/g,' ')
   .replace(/\b(?:anidro|anidra|hidratado|hidratada|monohidratado|monohidratada|dihidratado|dihidratada|trihidratado|trihidratada|tetrahidratado|tetrahidratada|tetrahidrata|tetrahidrato)\b/g,' ')
