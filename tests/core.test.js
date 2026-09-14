@@ -60,6 +60,14 @@ test('HCl, cloridrato e ordem das palavras representam o mesmo insumo-base',()=>
  assert.equal(equivalentProduct('Bupropiona HCl','Buspirona HCl'),false);
  assert.equal(equivalentProduct('Aspartato de Magnésio','Magnésio Taurato'),false);
 });
+test('formas quelato, glicina e bisglicinato se equivalem sem virar mineral puro',()=>{
+ assert.equal(equivalentProduct('Magnésio quelato','Magnésio glicina'),true);
+ assert.equal(equivalentProduct('Magnésio glicina','Bisglicinato de magnésio'),true);
+ assert.equal(equivalentProduct('Magnésio','Magnésio bisglicinato'),false);
+ assert.equal(equivalentProduct('Glicina','Magnésio glicina'),false);
+ assert.equal(equivalentProduct('Auxina Tricógena','Tricoxin'),true);
+ assert.equal(equivalentProduct('Auxina Tricógena','Trichoxin'),true);
+});
 test('agregador reúne ofertas sem somar a necessidade duplicada',()=>{
  const state={version:1,productAliases:[],suppliers:[supplier('X'),supplier('Y')],items:[{...item('a'),name:'Gingko biloba',qty:100},{...item('b'),name:'Ginkgo biloba 28%',qty:200}],offers:[offer('1','a','X',10000),offer('2','b','Y',18000)]};
  const grouped=aggregateEquivalentItems(state);assert.equal(grouped.items.length,1);assert.equal(grouped.items[0].qty,200);assert.equal(new Set(grouped.offers.map(o=>o.productId)).size,1);assert.equal(grouped.offers.length,2);

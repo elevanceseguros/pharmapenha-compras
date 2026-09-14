@@ -1,14 +1,14 @@
 import './style.css';
 import {defaultSuppliers,decimal,cents,money,quantity,normalize,today,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,equivalentProduct,aggregateEquivalentItems,productSimilarity,synonymStats} from './core.js';
 import {parseQuotation,quotationText} from './import.js';
-import {cloudConfigured,getCloudUser,signIn,signOut,listCloudRounds,saveCloudRound,deleteCloudRound,uploadQuotationFile} from './cloud.js';
+import {cloudConfigured,getCloudUser,signIn,signOut,listCloudRounds,saveCloudRound,deleteCloudRound,uploadQuotationFile,listProductAliases,saveProductAlias,deleteProductAlias} from './cloud.js';
 const uid=()=>crypto.randomUUID();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=n=>String(n).replace('.',',');
 const price=n=>(n/100).toFixed(2).replace('.',',');
 const initial=()=>({version:1,title:'Compra '+new Date().toLocaleDateString('pt-BR'),suppliers:structuredClone(defaultSuppliers),items:[],offers:[],productAliases:[],ignoredEquivalences:[],buyer:{name:'Pharmapenha',cnpj:'',address:'',contact:'',notes:''}});
 let state=initial(),view='home',plan=null,approved=false,worker=null,draft=null,local=false;
-let cloudReady=!cloudConfigured,cloudUser=null,cloudRounds=[],cloudRoundId=null,cloudTimer=null,cloudSavePromise=null,planMode='compare';
+let cloudReady=!cloudConfigured,cloudUser=null,cloudRounds=[],cloudRoundId=null,cloudTimer=null,cloudSavePromise=null,planMode='compare',globalAliases=[];
 let pdfQueue=[],pdfIndex=0,pdfGeneration=0;
 async function nextPDF(){
  const generation=++pdfGeneration;
@@ -29,11 +29,13 @@ function persist(){
  if(local)try{localStorage.setItem('pharma-round',JSON.stringify(state))}catch{notice('Não foi possível salvar neste aparelho. Salve a cotação em arquivo para não perder os dados.')}
  if(cloudUser&&hasQuote()){clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>saveCurrentCloud().catch(err=>notice('Falha ao salvar na nuvem: '+err.message)),700)}
 }
-async function refreshCloudRounds(){cloudRounds=await listCloudRounds()}
+function mergeKnownAliases(target){target.productAliases=target.productAliases||[];for(const a of globalAliases)if(!target.productAliases.some(x=>normalize(x.alias)===normalize(a.alias)))target.productAliases.push(a);return target}
+async function rememberAlias(alias,canonical){if(normalize(alias)===normalize(canonical))return;const local={alias,canonical};if(!state.productAliases.some(a=>normalize(a.alias)===normalize(alias)))state.productAliases.push(local);if(!cloudUser)return;const saved=await saveProductAlias(alias,canonical,normalize(alias),normalize(canonical));globalAliases=globalAliases.filter(a=>normalize(a.alias)!==normalize(alias));globalAliases.unshift(saved)}
+async function refreshCloudRounds(){cloudRounds=await listCloudRounds();for(const row of cloudRounds)mergeKnownAliases(row.state)}
 async function saveCurrentCloud(){if(!cloudUser||!hasQuote())return null;if(cloudSavePromise)return cloudSavePromise;cloudSavePromise=(async()=>{const row=await saveCloudRound(cloudRoundId,state);cloudRoundId=row.id;const old=cloudRounds.findIndex(x=>x.id===row.id);if(old>=0)cloudRounds[old]=row;else cloudRounds.unshift(row);return row})();try{return await cloudSavePromise}finally{cloudSavePromise=null}}
 async function bootCloud(){
  if(!cloudConfigured){render();return}
- try{cloudUser=await getCloudUser();if(cloudUser)await refreshCloudRounds()}catch(err){console.error(err)}
+ try{cloudUser=await getCloudUser();if(cloudUser){globalAliases=await listProductAliases();mergeKnownAliases(state);await refreshCloudRounds()}}catch(err){console.error(err)}
  cloudReady=true;render();
  if(cloudUser&&hasQuote()&&!cloudRoundId)persist();
 }
@@ -139,14 +141,14 @@ async function action(act,id){
  if(act==='remove-item'&&confirm('Excluir este item e todas as ofertas vinculadas? Baixe um backup para manter uma cópia.')){state.items=state.items.filter(i=>i.id!==id);state.offers=state.offers.filter(o=>o.productId!==id);changed()}
  if(act==='remove-offer'&&confirm('Excluir esta oferta?')){state.offers=state.offers.filter(o=>o.id!==id);changed()}
  if(act==='aggregate'){const before=state.items.length;state=aggregateEquivalentItems(state);changed();notice(before===state.items.length?'Nenhum item equivalente novo foi encontrado.':`${before-state.items.length} item(ns) equivalente(s) foram reunidos.`)}
- if(act==='remove-alias'){state.productAliases.splice(Number(id),1);changed()}
+ if(act==='remove-alias'){const removed=state.productAliases.splice(Number(id),1)[0];if(removed?.id)deleteProductAlias(removed.id).then(()=>{globalAliases=globalAliases.filter(a=>a.id!==removed.id)}).catch(err=>notice('Não foi possível remover o aprendizado: '+err.message));changed()}
  if(act==='merge-items'){
   const [targetId,sourceId]=id.split('|'),target=state.items.find(i=>i.id===targetId),source=state.items.find(i=>i.id===sourceId);if(!target||!source)return;
-  if(confirm(`Unificar “${source.name}” com “${target.name}”? As ofertas serão comparadas juntas.`)){state.productAliases.push({alias:source.name,canonical:target.name});target.qty=Math.max(target.qty,source.qty);target.allowExcess=Boolean(target.allowExcess||source.allowExcess);for(const o of state.offers)if(o.productId===source.id)o.productId=target.id;state.items=state.items.filter(i=>i.id!==source.id);changed()}
+  if(confirm(`Unificar “${source.name}” com “${target.name}”? Esta associação ficará aprendida para as próximas cotações.`)){rememberAlias(source.name,target.name).catch(err=>notice('A unificação foi aplicada, mas não foi guardada globalmente: '+err.message));target.qty=Math.max(target.qty,source.qty);target.allowExcess=Boolean(target.allowExcess||source.allowExcess);for(const o of state.offers)if(o.productId===source.id)o.productId=target.id;state.items=state.items.filter(i=>i.id!==source.id);changed()}
  }
  if(act==='ignore-pair'){const [a,b]=id.split('|').map(x=>state.items.find(i=>i.id===x));if(a&&b){state.ignoredEquivalences??=[];state.ignoredEquivalences.push([normalize(a.name),normalize(b.name)].sort().join('|'));changed()}}
  if(act==='new-round')newQuote();
- if(act==='cloud-open'){const row=cloudRounds.find(x=>x.id===id);if(!row)throw Error('Cotação não encontrada.');state=validateState(structuredClone(row.state));cloudRoundId=row.id;view='offers';plan=null;approved=false;render()}
+ if(act==='cloud-open'){const row=cloudRounds.find(x=>x.id===id);if(!row)throw Error('Cotação não encontrada.');state=validateState(mergeKnownAliases(structuredClone(row.state)));cloudRoundId=row.id;view='offers';plan=null;approved=false;render()}
  if(act==='cloud-delete'&&confirm('Excluir definitivamente esta cotação da nuvem?')){await deleteCloudRound(id);cloudRounds=cloudRounds.filter(x=>x.id!==id);if(cloudRoundId===id){cloudRoundId=null;state=initial()}render()}
  if(act==='cloud-logout'){await signOut();cloudUser=null;cloudRounds=[];cloudRoundId=null;view='home';render()}
  if(act==='pdf')document.querySelector('#pdf-file').click();
@@ -180,7 +182,7 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;const d=n
  if(f.getAttribute('id')==='manual-order-item-form'){
   const supplierId=get('supplierId'),product=get('product').trim(),packs=Number(get('packs')),q=quantity(decimal(get('packQty')),get('unit')),unitNet=cents(get('net')),unitGross=cents(get('gross'));if(!supplier(supplierId)||!product)throw Error('Confira o fornecedor e o produto.');if(!Number.isInteger(packs)||packs<=0)throw Error('O número de embalagens deve ser inteiro e maior que zero.');if(!Number.isSafeInteger(unitNet)||unitNet<=0||!Number.isSafeInteger(unitGross)||unitGross<unitNet)throw Error('Confira os preços: o valor final não pode ser menor que o preço sem impostos.');const net=packs*unitNet,gross=packs*unitGross;if(!Number.isSafeInteger(net)||!Number.isSafeInteger(gross))throw Error('O total informado é muito alto.');const itemId=`manual-${uid()}`,offerId=`manual-${uid()}`;plan.choices.push({itemId,offerId,supplierId,packs,qty:packs*q.qty,unit:q.unit,net,gross,excess:0,pricePerUnit:unitGross/q.qty,product,description:product,reference:get('reference').trim(),packQty:q.qty,unitNet,unitGross,manual:true});plan.selections[itemId]=offerId;approved=false;rebuildPlan();document.querySelector('#modal').close();render();notice(`Item “${product}” incluído no pedido de ${supplier(supplierId).name}.`);return;
  }
- if(f.getAttribute('id')==='new-quote-form'){const title=get('title').trim();if(!title)throw Error('Informe o nome da cotação.');if(hasQuote()&&!checked('replace'))throw Error('Confirme a substituição da cotação atual.');cloudRoundId=null;state={...state,started:true,title,items:[],offers:[]};view='offers'}
+ if(f.getAttribute('id')==='new-quote-form'){const title=get('title').trim();if(!title)throw Error('Informe o nome da cotação.');if(hasQuote()&&!checked('replace'))throw Error('Confirme a substituição da cotação atual.');cloudRoundId=null;state=mergeKnownAliases({...state,started:true,title,items:[],offers:[],productAliases:[]});view='offers'}
  if(f.getAttribute('id')==='rename-form')state.title=get('title').trim();
  if(f.getAttribute('id')==='buyer-form')state.buyer=Object.fromEntries(d);
  if(f.getAttribute('id')==='item-form'){
@@ -202,7 +204,7 @@ root.addEventListener('submit',e=>{e.preventDefault();const f=e.target;const d=n
   draft.rows.forEach((r,i)=>{if(!checked(`use-${i}`))return;const q=quantity(decimal(get(`qty-${i}`)),get(`unit-${i}`)),net=cents(get(`net-${i}`)),gross=cents(get(`gross-${i}`)),description=get(`description-${i}`).trim();if(!description||!Number.isSafeInteger(net)||net<0||!Number.isSafeInteger(gross)||gross<net)throw Error(`Confira valores da linha ${i+1}.`);if(checked(`available-${i}`)&&net===0)throw Error('Oferta disponível deve ter preço positivo.');let item=next.items.find(x=>x.id===get(`match-${i}`));if(item&&item.unit!==q.unit)throw Error(`Unidade incompatível na linha ${i+1}.`);if(item&&normalize(description)!==normalize(item.name)&&!next.productAliases.some(a=>normalize(a.alias)===normalize(description)&&normalize(a.canonical)===normalize(item.name)))next.productAliases.push({alias:description,canonical:item.name});if(!item){item={id:uid(),name:description,qty:q.qty*Math.max(1,r.quotedPacks||1),unit:q.unit,enabled:true,allowExcess:false,lock:''};next.items.push(item)}
    const o={id:uid(),productId:item.id,supplierId:get('supplierId'),description,packQty:q.qty,unit:q.unit,netCents:net,grossCents:gross,reference:get('reference'),expires:get('expires'),validity:r.validity||'',available:checked(`available-${i}`),considered:true,exclusionReason:'',reviewed:true,maxPacks:null};
    const old=next.offers.findIndex(x=>x.productId===o.productId&&x.supplierId===o.supplierId&&x.packQty===o.packQty&&x.reference===o.reference);if(old>=0)next.offers[old]=o;else next.offers.push(o);count++;
-  });if(!count)throw Error('Selecione pelo menos uma linha.');state=aggregateEquivalentItems(validateState(next));draft=null;
+  });if(!count)throw Error('Selecione pelo menos uma linha.');const learned=next.productAliases.filter(a=>!state.productAliases.some(old=>normalize(old.alias)===normalize(a.alias)&&normalize(old.canonical)===normalize(a.canonical)));state=aggregateEquivalentItems(validateState(next));Promise.all(learned.map(a=>rememberAlias(a.alias,a.canonical))).catch(err=>notice('A cotação foi importada, mas um aprendizado não foi salvo: '+err.message));draft=null;
  }
  document.querySelector('#modal').close();changed();
  if(f.getAttribute('id')==='draft-form'&&pdfQueue.length){pdfIndex++;nextPDF().catch(err=>formError(err.message))}

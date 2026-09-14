@@ -4,10 +4,12 @@ export const defaultSuppliers = [
 export const money = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 export const normalize = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export function productKey(name,aliases=[]){
- const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo');
+ const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo').replace(/\b(?:tricoxin|trichoxin)\b/g,'auxina tricogena');
  const learned=aliases.find(a=>normalize(a.alias)===raw);
  if(learned&&normalize(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
-	 const simplified=raw
+	 let chemicalForm=/\b(?:magnesio|calcio|zinco|cobre|ferro|manganes|cromo|selenio)\b/.test(raw)?raw.replace(/\b(?:quelato|quelatado|quelatada|glicina|bisglicinato|bisglicinata)\b/g,'quelato'):raw;
+	 chemicalForm=chemicalForm.replace(/\bquelato\s+(?:de\s+)?(magnesio|calcio|zinco|cobre|ferro|manganes|cromo|selenio)\b/g,'$1 quelato');
+	 const simplified=chemicalForm
 	  .replace(/\bp\s*\d+\b/g,' ')
 	  .replace(/\b(?:hcl|hidrocloreto|cloridrato)\b/g,' ')
 	  .replace(/\b(?:de|da|do|das|dos)\b/g,' ')
@@ -16,7 +18,7 @@ export function productKey(name,aliases=[]){
   .replace(/\b(?:extrato seco|ext seco|e s|extrato|em po|po)\b/g,' ')
   .replace(/\b(?:anidro|anidra|hidratado|hidratada|monohidratado|monohidratada|dihidratado|dihidratada|trihidratado|trihidratada|tetrahidratado|tetrahidratada|tetrahidrata|tetrahidrato)\b/g,' ')
   .replace(/\s+/g,' ').trim();
- let catalog=materialSynonyms[raw];
+ let catalog=materialSynonyms[chemicalForm];
  if(!catalog||catalog===raw)catalog=materialSynonyms[simplified];
  if(catalog&&catalog!==raw&&catalog!==simplified)return productKey(catalog,aliases);
  return simplified;

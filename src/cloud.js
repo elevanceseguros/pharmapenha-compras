@@ -33,6 +33,12 @@ export async function getCloudUser(){return (await activeSession())?.user||null}
 export async function signIn(email,password){const next=await authRequest('token?grant_type=password',{email,password});saveSession(next);return next.user}
 export async function signOut(){try{const current=await activeSession();if(current)await fetch(url+'/auth/v1/logout',{method:'POST',headers:{apikey:key,Authorization:'Bearer '+current.access_token}})}finally{saveSession(null)}}
 export async function listCloudRounds(){return await rest('quotation_rounds?select=id,title,status,state,created_at,updated_at&order=updated_at.desc')}
+export async function listProductAliases(){return await rest('product_aliases?select=id,alias,canonical,alias_key,canonical_key&order=updated_at.desc')}
+export async function saveProductAlias(alias,canonical,aliasKey,canonicalKey){
+ const current=await activeSession(),body={alias,canonical,alias_key:aliasKey,canonical_key:canonicalKey,created_by:current.user.id,updated_by:current.user.id,updated_at:new Date().toISOString()};
+ const rows=await rest('product_aliases?on_conflict=alias_key',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify(body)});return rows[0]
+}
+export async function deleteProductAlias(id){await rest('product_aliases?id=eq.'+encodeURIComponent(id),{method:'DELETE'})}
 export async function saveCloudRound(id,state,status='draft'){
  const current=await activeSession();
  const body={title:state.title,status,state,updated_by:current.user.id};
