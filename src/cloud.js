@@ -6,9 +6,11 @@ let session=null;
 try{session=JSON.parse(localStorage.getItem(sessionKey)||'null')}catch{}
 function saveSession(next){session=next;if(next)localStorage.setItem(sessionKey,JSON.stringify(next));else localStorage.removeItem(sessionKey)}
 async function authRequest(path,body){
- const response=await fetch(url+'/auth/v1/'+path,{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify(body)});
- const data=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(data.msg||data.message||data.error_description||'Não foi possível entrar.');
+ let response;
+ try{response=await fetch(url+'/auth/v1/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)})}
+ catch(err){throw Error('Não foi possível conectar ao Supabase. Confira se VITE_SUPABASE_URL contém o endereço https://...supabase.co. Detalhe: '+err.message)}
+ const raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{}}catch{}
+ if(!response.ok){const detail=data.msg||data.message||data.error_description||data.error||raw.slice(0,160)||'resposta vazia';throw Error('Supabase recusou o acesso: '+detail+' (HTTP '+response.status+').')}
  return data;
 }
 async function activeSession(){
