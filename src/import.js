@@ -1,14 +1,26 @@
 import {decimal,quantity} from './core.js';
-export function parseQuotation(text){
- const rows=[],unparsed=[];let detected='';
- if(/sovita/i.test(text))detected='Sovita';else if(/infinitypharma|infinity pharma/i.test(text))detected='Infinity Pharma';else if(/pnfarma|pn farmac/i.test(text))detected='PN farma';else if(/biovital/i.test(text))detected='Biovital';else if(/galena qu[ií]mica|galena digital/i.test(text))detected='Galena';else if(/purifarma/i.test(text))detected='Purifarma';else if(/exata (?:suprimentos|suprmentos|distribui)/i.test(text))detected='Exata';else if(/irial ?mag|lri[ca]l.?mag/i.test(text))detected='Irial Mag';else if(/valdequ/i.test(text))detected='Valdequimica';else if(/allpremium|embrafarma/i.test(text))detected='Embrafarma (All Premium)';else if(/fracionamento.*encargos|pre[cç]o g\/mlh|66111091[-.]979/i.test(text))detected='Caldic';
+const SUPPLIER_HINTS=[['Sovita',/sovita/i],['Infinity Pharma',/infinity\s*pharma/i],['PN farma',/pn\s*farma|pn farmac/i],['Biovital',/biovital/i],['Galena',/galena qu[ií]mica|galena digital/i],['Purifarma',/purifarma/i],['Exata',/exata (?:suprimentos|suprmentos|distribui)/i],['Irial Mag',/irial ?mag|lri[ca]l.?mag/i],['Valdequimica',/valdequ/i],['Embrafarma (All Premium)',/all\s*premium|embrafarma/i],['Caldic',/caldic|fracionamento.*encargos|pre[cç]o g\/mlh|66111091[-.]979/i],['Gamma',/gamma/i],['Iberoquimica',/ibero\s*qu[ií]mica/i],['Cosmetrade',/cosmetrade/i],['Lemma',/lemma/i],['Formus',/formus/i],['Nutrifarm',/nutrifarm/i],['Florien',/florien/i],['Global Supplies',/global supplies/i],['Sixty Pharma',/sixty pharma/i]];
+const unitToken='KG|GR|G|MLH|MIL|ML|L|UN|UND|UNID(?:ADE)?S?';
+const junkName=/^(?:produto|descri[cç][aã]o|insumo|item|quantidade|qtd|qtde|embalagem|pre[cç]o|valor|total|validade|origem|cota[cç][aã]o)(?:\s|$)/i;
+function flexibleLine(raw){
+ const line=String(raw).replace(/[\t_]+/g,' ').replace(/[•▪◦►▶]/g,' ').replace(/\*+/g,'').replace(/\s+/g,' ').trim();
+ const amount=new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(${unitToken})\\b`,'i').exec(line);if(!amount)return null;
+ const description=line.slice(0,amount.index).replace(/^[\s>\-–—:;|#]+/,'').replace(/^\d{1,3}[).:\-]\s*/,'').replace(/^(?:produto|item|insumo|descri[cç][aã]o)\s*[:=-]\s*/i,'').replace(/\b(?:embalagem|fracionamento|quantidade|qtd|qtde)\s*[:=-]?\s*$/i,'').trim();
+ if(description.length<2||junkName.test(description)||!/\p{L}/u.test(description))return null;
+ const tail=line.slice(amount.index+amount[0].length),prices=[];
+ for(const match of tail.matchAll(/(?:R\$|RS|valor|pre[cç]o|unit[aá]rio|final|total)?\s*[:=]?\s*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+[.,]\d{2}|\d+)(?!\s*[\/%])/gi)){const explicit=/(?:R\$|RS|valor|pre[cç]o|unit[aá]rio|final|total)/i.test(match[0]),formatted=/[.,]\d{2}$/.test(match[1]);if(explicit||formatted)prices.push(match[1])}
+ if(!prices.length)return null;const gross=prices.at(-1),hasSeparate=/sem\s*imposto|l[ií]quido|pre[cç]o\s*base/i.test(tail),net=hasSeparate&&prices.length>1?prices[0]:gross;
+ return {description,amount:amount[1],unit:amount[2].replace(/^GR$/i,'G').replace(/^UND?$|^UNIDADES?$/i,'UN'),net,gross,source:raw};
+}
+export function parseQuotation(text,preferredSupplier=''){
+ const rows=[],unparsed=[];let detected=preferredSupplier||SUPPLIER_HINTS.find(([,pattern])=>pattern.test(text))?.[0]||'';
  const ref=text.match(/(?:Cotação\s*(?:N[º°o.:]|[-:])?|Número da proposta[^:]*:)\s*([^\s]+)/i)?.[1]||'';
  const dateRaw=text.match(/(?:Data da Cotação:|Data da Criação:|Data da Emissão[^:]*:)\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1];
  let expires='';const explicit=text.match(/Validade da proposta[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1];
  const iso=v=>v.split('/').reverse().join('-');
  if(explicit)expires=iso(explicit);
  else if(dateRaw&&/válida por 2 dias/i.test(text)){const d=new Date(iso(dateRaw)+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+2);expires=d.toISOString().slice(0,10)}
- const rowKeys=new Set(),add=(description,amount,unit,net,gross,extra={})=>{try{const q=quantity(decimal(amount),unit),n=Math.round(decimal(net)*100),g=Math.round(decimal(gross)*100),name=description.trim().replace(/\s+-\s+DCB:.*$/i,'').replace(/^\d+\s+\d+\s+/,'').trim(),key=`${name}|${q.qty}|${q.unit}|${g}`;if(name&&n>0&&g>=n&&!rowKeys.has(key)){rowKeys.add(key);rows.push({description:name,...q,net:n,gross:g,quotedPacks:extra.quotedPacks??1,available:true,validity:extra.validity||'',source:extra.source||description})}}catch{}};
+ const rowKeys=new Set(),add=(description,amount,unit,net,gross,extra={})=>{try{const q=quantity(decimal(amount),unit),n=Math.round(decimal(net)*100),g=Math.round(decimal(gross)*100),name=description.trim().replace(/\s+-\s+DCB:.*$/i,'').replace(/^\d+\s+\d+\s+/,'').trim(),key=`${name}|${q.qty}|${q.unit}|${g}`;if(name&&n>0&&g>=n&&!rowKeys.has(key)){rowKeys.add(key);rows.push({description:name,...q,net:n,gross:g,quotedPacks:extra.quotedPacks??1,available:true,validity:extra.validity||'',source:extra.source||description});return true}}catch{}return false};
  const sourceLines=text.split(/\n/);
  if(detected==='Biovital')for(let i=1;i<sourceLines.length;i++){const product=sourceLines[i].replace(/\s+/g,' ').trim().match(/^(.*?)\s*\(([\d.,]+)\s*(KG|G|L|ML|UN)\)\s*$/i);if(!product)continue;const prior=sourceLines[i-1].replace(/\s+/g,' ').trim(),prices=[...prior.matchAll(/(?:^|\s)(\d+[.,]\d{2})(?=\s|$)/g)].map(m=>m[1]);if(prices.length)add(product[1],product[2],product[3],prices.at(-1),prices.at(-1),{source:`${prior} ${sourceLines[i]}`})}
  let pending='';const fractionNames=new Map();
@@ -59,9 +71,13 @@ export function parseQuotation(text){
   if(pnLegacy){const pack=decimal(pnLegacy[4]);const n=decimal(pnLegacy[3])/pack;rows.push({description:pnLegacy[1],qty:pack*1000,unit:'g',net:Math.round(decimal(pnLegacy[6])*pack*100),gross:Math.round(decimal(pnLegacy[7])/n*100),quotedPacks:n,available:n>0,validity:pnLegacy[5],source:line});continue}
   const manual=line.match(/^(.*?)\s+(\d+(?:[.,]\d+)?)\s*(kg|g|mlh|mil|ml|l|un)\s*[-–—:;]?\s*(?:R\$\s*)?([\d.]+(?:,\d{1,2})?)\s*$/i);
   if(manual&&manual[1].trim()){const q=quantity(decimal(manual[2]),manual[3]);const p=Math.round(decimal(manual[4])*100);if(p>0){rows.push({description:manual[1],...q,net:p,gross:p,quotedPacks:1,available:true,source:line});continue}}
+  if(line.includes(';')){let added=0;for(const segment of line.split(/\s*;\s*/)){const flexible=flexibleLine(segment);if(flexible&&add(flexible.description,flexible.amount,flexible.unit,flexible.net,flexible.gross,{source:segment}))added++}if(added)continue}
+  const flexible=flexibleLine(line);if(flexible&&add(flexible.description,flexible.amount,flexible.unit,flexible.net,flexible.gross,{source:line}))continue;
   unparsed.push(line);
  }
- return {rows,unparsed,detected,reference:ref,expires};
+ // WhatsApp e OCR frequentemente quebram nome, embalagem e preço em linhas diferentes.
+ const pendingLines=[...unparsed],recovered=new Set(),hasAmount=v=>new RegExp(`\\d+(?:[.,]\\d+)?\\s*(?:${unitToken})\\b`,'i').test(v),hasPrice=v=>/(?:R\$|RS|valor|pre[cç]o|total|final)\s*[:=]?\s*\d|\d+[.,]\d{2}/i.test(v);for(let i=0;i<pendingLines.length;i++){const first=pendingLines[i];if(!first||recovered.has(first)||junkName.test(first)||hasAmount(first)||hasPrice(first)||!/\p{L}/u.test(first)||first.length>120)continue;for(let size=2;size<=3&&i+size<=pendingLines.length;size++){const parts=pendingLines.slice(i,i+size).filter(v=>!recovered.has(v)),joined=parts.join(' '),flexible=flexibleLine(joined);if(flexible&&add(flexible.description,flexible.amount,flexible.unit,flexible.net,flexible.gross,{source:joined})){parts.forEach(v=>recovered.add(v));break}}}
+ return {rows,unparsed:unparsed.filter(line=>!recovered.has(line)),detected,reference:ref,expires};
 }
 export async function pdfText(file){
  if(file.size>20*1024*1024)throw Error('O PDF excede 20 MB. Divida o documento.');
@@ -86,9 +102,16 @@ async function worker(onProgress){
  return ocrWorker;
 }
 async function preparedImage(source){const bitmap=await createImageBitmap(source),scale=Math.min(3,Math.max(1,2200/bitmap.width)),canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);const ctx=canvas.getContext('2d');ctx.filter='grayscale(1) contrast(1.45)';ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();return canvas}
+function ocrPreferences(){try{return JSON.parse(localStorage.getItem('pharma-ocr-layouts')||'{}')}catch{return{}}}
+function rememberOCRMode(supplier,mode){if(!supplier)return;try{const prefs=ocrPreferences();prefs[supplier]=mode;localStorage.setItem('pharma-ocr-layouts',JSON.stringify(prefs))}catch{}}
+async function bestOCRText(ocr,canvas,onProgress){
+ await ocr.setParameters({preserve_interword_spaces:'1',tessedit_pageseg_mode:'3'});ocrProgress=p=>onProgress?.(Math.round(p*.65));const first=(await ocr.recognize(canvas)).data.text.trim(),firstParsed=parseQuotation(first),preferred=ocrPreferences()[firstParsed.detected];
+ const retry=(firstParsed.rows.length<=1&&first.split(/\n/).filter(Boolean).length>=6)||preferred==='6';if(!retry){onProgress?.(100);return first}
+ await ocr.setParameters({preserve_interword_spaces:'1',tessedit_pageseg_mode:'6'});ocrProgress=p=>onProgress?.(65+Math.round(p*.35));const second=(await ocr.recognize(canvas)).data.text.trim(),secondParsed=parseQuotation(second),useSecond=secondParsed.rows.length>firstParsed.rows.length;rememberOCRMode((useSecond?secondParsed:firstParsed).detected,useSecond?'6':'3');await ocr.setParameters({preserve_interword_spaces:'1',tessedit_pageseg_mode:'3'});onProgress?.(100);return useSecond?second:first
+}
 export async function imageText(file,onProgress){
  if(file.size>20*1024*1024)throw Error('A imagem excede 20 MB. Envie uma foto menor.');
- const w=await worker(onProgress),canvas=await preparedImage(file),result=await w.recognize(canvas);const text=result.data.text.trim();
+ const w=await worker(onProgress),canvas=await preparedImage(file),text=await bestOCRText(w,canvas,onProgress);
  if(text.length<20)throw Error('Não consegui ler texto suficiente nesta imagem. Tente uma foto mais nítida, reta e bem iluminada.');
  return text;
 }
@@ -96,7 +119,7 @@ async function scannedPDFText(file,onProgress){
  const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');const workerURL=(await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;pdfjs.GlobalWorkerOptions.workerSrc=workerURL;
  const task=pdfjs.getDocument({data:await file.arrayBuffer(),isEvalSupported:false});const texts=[];
  try{const doc=await task.promise;if(doc.numPages>20)throw Error('PDF digitalizado com mais de 20 páginas. Divida o documento para usar o reconhecimento de imagem.');
-  const ocr=await worker();for(let i=1;i<=doc.numPages;i++){ocrProgress=p=>onProgress?.({page:i,pages:doc.numPages,percent:p});onProgress?.({page:i,pages:doc.numPages,percent:0});const page=await doc.getPage(i),viewport=page.getViewport({scale:2}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const enhanced=await preparedImage(canvas),result=await ocr.recognize(enhanced,{}, {text:true});texts.push(result.data.text);onProgress?.({page:i,pages:doc.numPages,percent:100})}
+  const ocr=await worker();for(let i=1;i<=doc.numPages;i++){onProgress?.({page:i,pages:doc.numPages,percent:0});const page=await doc.getPage(i),viewport=page.getViewport({scale:2}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const enhanced=await preparedImage(canvas),text=await bestOCRText(ocr,enhanced,p=>onProgress?.({page:i,pages:doc.numPages,percent:p}));texts.push(text);onProgress?.({page:i,pages:doc.numPages,percent:100})}
  }finally{await task.destroy()}
  const text=texts.join('\n').trim();if(text.length<20)throw Error('Não consegui ler texto suficiente neste PDF escaneado. Tente um arquivo mais nítido.');return text;
 }

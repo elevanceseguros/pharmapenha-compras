@@ -27,3 +27,15 @@ test('reconhece texto imperfeito de foto e mantém conferência posterior',()=>{
  const p=parseQuotation('lriclOMag\nICondroitina Sulfato De Sédio 1 Kg 276,130___276,13 3,25% USA 03/05/29\nPnfarma\nFRutina 70% BRASIL 0,250 KG 0,250 04/2023, 170,00 42,50');
  assert.equal(p.rows.length,2);assert.equal(p.rows[0].gross,27613);assert.equal(p.rows[1].qty,250);
 });
+
+test('entende mensagens livres de WhatsApp sem exigir travessões ou colunas',()=>{
+ const p=parseQuotation(`Olá, segue nossa cotação:\n* Creatina monohidratada 1 kg R$ 82,00 pronta entrega\n• Licopeno 100g: 64,50 validade 09/2028\n3) Bupropiona HCl 20 gr valor final 130,00\nObrigada!`,'Purifarma');
+ assert.equal(p.detected,'Purifarma');assert.equal(p.rows.length,3);assert.deepEqual(p.rows.map(r=>[r.description,r.qty,r.gross]),[['Creatina monohidratada',1000,8200],['Licopeno',100,6450],['Bupropiona HCl',20,13000]]);
+});
+
+test('remonta item quando OCR ou WhatsApp quebra nome quantidade e preço em linhas',()=>{
+ const p=parseQuotation(`Nortriptilina HCl (P.344) Brasil\n100 g\nPreço: R$ 245,90\n\nCoenzima Q10\n50 g\n180,00`);
+ assert.equal(p.rows.length,2);assert.equal(p.rows[0].description,'Nortriptilina HCl (P.344) Brasil');assert.equal(p.rows[0].gross,24590);assert.equal(p.rows[1].description,'Coenzima Q10');assert.equal(p.rows[1].gross,18000);
+});
+
+test('aceita vários itens em uma única linha separados por ponto e vírgula',()=>{const p=parseQuotation('Creatina 1kg R$ 80,00; Licopeno 100 g 65,50; Rutina 250g valor 42,50');assert.equal(p.rows.length,3)});
