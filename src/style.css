@@ -31,6 +31,7 @@ small{display:block;color:var(--muted);font-size:.78rem}
 .brand{display:flex;align-items:center;gap:12px}.brand strong{display:block;color:#29441e;font-size:1.08rem}.brand span:not(.brand-logo){display:block;color:#73816f;font-size:.75rem}
 .brand-logo{width:44px;height:44px;object-fit:contain;border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(64,105,37,.12)}.login-logo{width:68px;height:68px;border-radius:17px;margin-bottom:22px}
 .header-tools{display:flex;align-items:center;gap:8px}.header-tools button{background:#f5f8f3;border-color:#dce7d7;color:#456132}
+.header-tools .logout-button{background:#fff7f7;border-color:#efd3d3;color:#a23838}.header-tools .logout-button:hover{background:#fbeaea;border-color:#ddaead;color:#8f2929}
 .cloud-pill,.user-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid #dce8d6;border-radius:999px;padding:7px 10px;color:#5b7150;background:#f7faf5;font-size:.78rem}
 .cloud-pill i,.save-strip i,.online i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#42d392;box-shadow:0 0 0 3px rgba(66,211,146,.14)}
 .steps{position:sticky;top:0;z-index:15;background:rgba(249,251,248,.94);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
