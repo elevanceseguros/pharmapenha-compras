@@ -30,6 +30,11 @@ async function rest(path,options={}){
  return data;
 }
 export async function getCloudUser(){return (await activeSession())?.user||null}
+export async function getAppMember(){
+ const current=await activeSession();if(!current?.user?.id)return null;
+ const rows=await rest('app_members?select=id,email,name,role,active&id=eq.'+encodeURIComponent(current.user.id));
+ return rows?.[0]||null;
+}
 export async function signIn(email,password){const next=await authRequest('token?grant_type=password',{email,password});saveSession(next);return next.user}
 export async function signOut(){try{const current=await activeSession();if(current)await fetch(url+'/auth/v1/logout',{method:'POST',headers:{apikey:key,Authorization:'Bearer '+current.access_token}})}finally{saveSession(null)}}
 export async function listCloudRounds(){return await rest('quotation_rounds?select=id,title,status,state,created_at,updated_at&order=updated_at.desc')}

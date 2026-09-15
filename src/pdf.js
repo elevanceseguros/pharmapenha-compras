@@ -46,6 +46,26 @@ export function internalReportPDF(orders,audit,round,date=new Date()){
  const excluded=(audit.offers||[]).filter(o=>o.considered===false&&chosen.has(o.productId));
  for(const o of excluded){const picked=chosen.get(o.productId),item=(audit.items||[]).find(i=>i.id===o.productId),supplier=(audit.suppliers||[]).find(s=>s.id===o.supplierId);if(y>235)page();doc.setFillColor(230,239,246);doc.rect(15,y-5,180,10,'F');para(item?.name||picked.line.product||o.description,true);para(`Comprado de: ${picked.supplier.name} | ${picked.line.packs} x ${picked.line.packQty} ${picked.line.unit} | ${money(picked.line.gross)}`);para(`Oferta desconsiderada: ${supplier?.name||'Fornecedor'} | ${money(o.grossCents)} por ${o.packQty} ${o.unit}`);para(`Motivo: ${o.exclusionReason}`,true);y+=5}
  if(!excluded.length)para('Nenhuma oferta desconsiderada relacionada aos produtos comprados.');
+ if(y>235)page();para('COMPARATIVO COMPLETO DAS COTAÇÕES',true);para('A moldura verde indica o menor desembolso. A oferta efetivamente escolhida também é identificada.');y+=3;
+ const choices=audit.choices||[],selections=audit.selections||{},reasons=audit.choiceReasons||{};
+ for(const item of (audit.items||[]).filter(i=>i.enabled!==false)){
+  const options=choices.filter(c=>c.itemId===item.id).sort((a,b)=>a.gross-b.gross);if(!options.length)continue;
+  if(y>238)page();para(`${item.name} | necessidade ${item.qty} ${item.unit}`,true);
+  const cheapest=Math.min(...options.map(c=>c.gross));
+  for(const c of options){
+   const s=(audit.suppliers||[]).find(x=>x.id===c.supplierId),isCheapest=c.gross===cheapest,isChosen=selections[item.id]===c.offerId;
+   const label=`${s?.name||'Fornecedor'} | ${c.packs} x ${c.packQty} ${c.unit} | ${money(c.gross)}${isCheapest?' | MENOR DESEMBOLSO':''}${isChosen?' | ESCOLHIDA':''}`;
+   const lines=doc.splitTextToSize(clean(label),169),height=Math.max(10,lines.length*4.5+5);if(y+height>272)page();
+   if(isCheapest){doc.setDrawColor(76,151,63);doc.setLineWidth(.7);doc.roundedRect(15,y-4,180,height,2,2,'S')}
+   doc.setFont('helvetica',isChosen?'bold':'normal');lines.forEach((line,i)=>text(line,20,y+i*4.5));y+=height+2;
+  }
+  const optionIds=new Set(options.map(c=>c.offerId));
+  for(const o of (audit.offers||[]).filter(o=>o.productId===item.id&&!optionIds.has(o.id))){const s=(audit.suppliers||[]).find(x=>x.id===o.supplierId),status=o.considered===false?'desconsiderada':o.available===false?'indisponível':'não comparável';para(`${s?.name||'Fornecedor'} | ${money(o.grossCents)} por ${o.packQty} ${o.unit} | ${status}`)}
+  const chosenOption=options.find(c=>selections[item.id]===c.offerId);if(chosenOption&&chosenOption.gross>cheapest&&validReasonText(reasons[item.id]))para(`Motivo da escolha: ${reasons[item.id]}`,true);y+=3;
+ }
+ const manual=orders.flatMap(o=>o.lines.map(line=>({line,supplier:o.supplier}))).filter(x=>x.line.manual);
+ if(manual.length){if(y>238)page();para('ITENS INCLUÍDOS MANUALMENTE',true);for(const {line,supplier} of manual){para(`${line.product||line.description} | ${supplier.name} | ${money(line.gross)}`,true);para(`Motivo: ${line.decisionReason||'Não informado'}`)}y+=4}
  const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);text(`Página ${i} de ${n}`,195,286,{align:'right'})}
  return new Uint8Array(doc.output('arraybuffer'));
 }
+function validReasonText(value){return String(value||'').trim().length>=10}
