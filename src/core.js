@@ -33,6 +33,22 @@ export function productSimilarity(a,b,aliases=[]){
  const common=[...x].filter(t=>y.has(t)).length;
  return common/Math.max(x.size,y.size);
 }
+function nameComplexity(name){
+ const value=normalize(name),qualifiers=(value.match(/\b(?:hcl|hidrocloreto|cloridrato|extrato|ext|seco|anidro|hidratado|quelato|glicina|bisglicinato|p\s*\d+|\d+)\b/g)||[]).length;
+ return qualifiers*100+value.split(' ').length*10+value.length;
+}
+export function equivalentGroups(items,offers,aliases=[],ignored=[]){
+ const quoted=items.filter(item=>offers.some(offer=>offer.productId===item.id)),parent=new Map(quoted.map(item=>[item.id,item.id]));
+ const root=id=>{let current=id;while(parent.get(current)!==current)current=parent.get(current);return current};
+ const join=(a,b)=>{const x=root(a),y=root(b);if(x!==y)parent.set(y,x)};
+ const ignoredKey=(a,b)=>[normalize(a.name),normalize(b.name)].sort().join('|');
+ for(let a=0;a<quoted.length;a++)for(let b=a+1;b<quoted.length;b++){const x=quoted[a],y=quoted[b];if(x.unit===y.unit&&!ignored.includes(ignoredKey(x,y))&&productSimilarity(x.name,y.name,aliases)>=.6)join(x.id,y.id)}
+ const sets=new Map();for(const item of quoted){const key=root(item.id);if(!sets.has(key))sets.set(key,[]);sets.get(key).push(item)}
+ return [...sets.values()].filter(group=>group.length>1&&new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId))).size>1).map(group=>{
+  const ordered=[...group].sort((a,b)=>nameComplexity(a.name)-nameComplexity(b.name)||a.name.localeCompare(b.name,'pt-BR'));
+  return {primary:ordered[0],alternatives:ordered.slice(1),supplierIds:[...new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId)))]};
+ });
+}
 export function aggregateEquivalentItems(state){
  const next=structuredClone(state),aliases=next.productAliases||[],groups=new Map();
  for(const item of next.items){

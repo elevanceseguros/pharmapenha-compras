@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,productKey,equivalentProduct,aggregateEquivalentItems} from '../src/core.js';
+import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,productKey,equivalentProduct,equivalentGroups,aggregateEquivalentItems} from '../src/core.js';
 import {parseQuotation} from '../src/import.js';
 import {materialSynonyms} from '../src/synonyms.generated.js';
 const supplier=(id,min=0,freight=0)=>({id,name:id,minCents:min,freightCents:freight,minimumBasis:'net',freightKnown:true});
@@ -67,6 +67,16 @@ test('formas quelato, glicina e bisglicinato se equivalem sem virar mineral puro
  assert.equal(equivalentProduct('Glicina','Magnésio glicina'),false);
  assert.equal(equivalentProduct('Auxina Tricógena','Tricoxin'),true);
  assert.equal(equivalentProduct('Auxina Tricógena','Trichoxin'),true);
+});
+test('sugere um único grupo entre fornecedores e escolhe o nome mais simples',()=>{
+ const items=['Bupropiona HCl','Cloridrato de Bupropiona','Bupropiona'].map((name,i)=>({...item('i'+i),name}));
+ const offers=items.map((x,i)=>offer('o'+i,x.id,'s'+i,10000));
+ const groups=equivalentGroups(items,offers,[],[]);assert.equal(groups.length,1);assert.equal(groups[0].primary.name,'Bupropiona');assert.equal(groups[0].alternatives.length,2);
+ assert.equal(equivalentGroups(items,offers.map(o=>({...o,supplierId:'s1'})),[],[]).length,0);
+});
+test('não sugere sais conhecidos como diferentes',()=>{
+ const items=[{...item('a'),name:'Aspartato de Magnésio'},{...item('b'),name:'Magnésio Taurato'}],offers=[offer('1','a','X',100),offer('2','b','Y',100)];
+ assert.equal(equivalentGroups(items,offers,[],[]).length,0);
 });
 test('agregador reúne ofertas sem somar a necessidade duplicada',()=>{
  const state={version:1,productAliases:[],suppliers:[supplier('X'),supplier('Y')],items:[{...item('a'),name:'Gingko biloba',qty:100},{...item('b'),name:'Ginkgo biloba 28%',qty:200}],offers:[offer('1','a','X',10000),offer('2','b','Y',18000)]};
