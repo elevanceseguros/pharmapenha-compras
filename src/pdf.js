@@ -3,29 +3,32 @@ import {zipSync} from 'fflate';
 import {money} from './core.js';
 const clean=s=>String(s??'').replace(/[\u0000-\u001f]/g,' ').replace(/[–—]/g,'-').replace(/[^\u0020-\u00ff]/g,' ');
 export const slug=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]/g,'-').slice(0,80);
+const quantity=(value,unit)=>`${Number(value||0).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${unit||''}`.trim();
 export function orderPDF(order,buyer,round,date=new Date()){
  if(!order.valid)throw Error('Pedido abaixo do mínimo. PDF bloqueado.');
- const doc=new jsPDF();const pages=[];let y=20;
+ const doc=new jsPDF();let y=20;
  const freightKnown=order.freightKnown??order.supplier.freightKnown,freightCents=order.freightCents??order.supplier.freightCents;
  const text=(s,x,yy,opt)=>doc.text(clean(s),x,yy,opt);
- function header(){doc.setFont('helvetica','bold');doc.setFontSize(17);text('PEDIDO DE COMPRA',15,18);doc.setFontSize(11);text('Pharmapenha',15,26);doc.setFont('helvetica','normal');doc.setFontSize(9);const lines=doc.splitTextToSize(clean(`${round} | ${date.toLocaleDateString('pt-BR')}`),180);lines.forEach((l,i)=>text(l,15,33+i*4.5));y=38+lines.length*4.5;const vendor=doc.splitTextToSize(clean(`Fornecedor: ${order.supplier.name}`),180);vendor.forEach((l,i)=>text(l,15,y+i*4.5));y+=vendor.length*4.5+6}
+ function header(){doc.setFillColor(49,85,31);doc.rect(0,0,210,37,'F');doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(17);text('PEDIDO DE COMPRA',15,17);doc.setFontSize(9);text('PHARMAPENHA',15,25);doc.setFont('helvetica','normal');text(`${round} | ${date.toLocaleDateString('pt-BR')}`,195,25,{align:'right'});doc.setTextColor(33,48,36);y=47}
  function page(){doc.addPage();header()}
- function para(s){const lines=doc.splitTextToSize(clean(s),179);for(const l of lines){if(y>268)page();text(l,15,y);y+=5}}
- header();para(`Comprador: ${buyer.name||'Pharmapenha'}`);if(buyer.cnpj)para(`CNPJ: ${buyer.cnpj}`);if(buyer.address)para(`Entrega: ${buyer.address}`);if(buyer.contact)para(`Contato: ${buyer.contact}`);para(`Condição de pagamento: ${order.payment||'a combinar'}`);y+=4;
- function tableHeader(){doc.setFillColor(230,239,246);doc.rect(15,y-4,180,9,'F');doc.setFont('helvetica','bold');text('Produto / referência',17,y+2);text('Embalagens',119,y+2);text('Unitário',162,y+2,{align:'right'});text('Total',193,y+2,{align:'right'});doc.setFont('helvetica','normal');y+=12}
+ function ensure(h=12){if(y+h>276)page()}
+ function para(s,bold=false,x=15,width=179){doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(9);for(const line of doc.splitTextToSize(clean(s),width)){ensure(5);text(line,x,y);y+=5}}
+ header();doc.setFillColor(238,247,232);doc.roundedRect(15,y-5,180,18,3,3,'F');doc.setTextColor(94,113,87);doc.setFont('helvetica','normal');doc.setFontSize(8);text('FORNECEDOR',20,y+1);doc.setTextColor(49,85,31);doc.setFont('helvetica','bold');doc.setFontSize(14);text(order.supplier.name,20,y+9);doc.setTextColor(33,48,36);y+=23;
+ doc.setFillColor(248,250,247);doc.roundedRect(15,y,180,28,3,3,'F');doc.setFontSize(8);doc.setTextColor(106,120,108);text('COMPRADOR / EMPRESA',20,y+7);doc.setTextColor(33,48,36);doc.setFont('helvetica','bold');doc.setFontSize(10);text(buyer.name||'Pharmapenha',20,y+14);doc.setFont('helvetica','normal');doc.setFontSize(8);if(buyer.cnpj)text(`CNPJ: ${buyer.cnpj}`,20,y+21);if(buyer.contact)text(`Contato: ${buyer.contact}`,105,y+14);if(buyer.address){const address=doc.splitTextToSize(clean(`Entrega: ${buyer.address}`),85);address.slice(0,2).forEach((line,i)=>text(line,105,y+21+i*4))}y+=35;
+ doc.setFillColor(248,250,247);doc.roundedRect(15,y,87,20,3,3,'F');doc.roundedRect(108,y,87,20,3,3,'F');doc.setTextColor(106,120,108);doc.setFontSize(8);text('CONDIÇÃO DE PAGAMENTO',20,y+7);text('FRETE',113,y+7);doc.setTextColor(33,48,36);doc.setFont('helvetica','bold');doc.setFontSize(10);text(order.payment||'A combinar',20,y+15);text(freightKnown?money(freightCents):'A confirmar',113,y+15);y+=29;
+ function tableHeader(){doc.setFillColor(49,85,31);doc.roundedRect(15,y-4,180,10,2,2,'F');doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(8);text('PRODUTO / REFERÊNCIA',19,y+2);text('QUANTIDADE TOTAL',139,y+2,{align:'right'});text('PREÇO EMB.',169,y+2,{align:'right'});text('TOTAL',191,y+2,{align:'right'});doc.setTextColor(33,48,36);doc.setFont('helvetica','normal');y+=12}
  tableHeader();
  for(const line of order.lines){
-  const description=doc.splitTextToSize(clean(line.description),92);
-  const refs=line.reference?doc.splitTextToSize(`Cotação: ${clean(line.reference)}`,92):[];
+  const description=doc.splitTextToSize(clean(line.description),87);
+  const refs=line.reference?doc.splitTextToSize(`Ref. cotação: ${clean(line.reference)}`,87):[];
   const height=Math.max(16,(description.length+refs.length)*4.5+5);
   if(y+height>267){page();tableHeader()}
-  description.forEach((s,i)=>text(s,17,y+i*4.5));doc.setTextColor(90);refs.forEach((s,i)=>text(s,17,y+(description.length+i)*4.5));doc.setTextColor(0);
-  text(`${line.packs} x ${line.packQty} ${line.unit}`,119,y);text(money(line.unitGross),162,y,{align:'right'});text(money(line.gross),193,y,{align:'right'});
-  y+=height;doc.setDrawColor(215);doc.line(15,y-3,195,y-3);
+  doc.setFontSize(9);doc.setFont('helvetica','bold');description.forEach((s,i)=>text(s,19,y+i*4.5));doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(106,120,108);refs.forEach((s,i)=>text(s,19,y+(description.length+i)*4.5));doc.setTextColor(33,48,36);doc.setFontSize(8.5);
+  const totalQty=Number(line.packs||0)*Number(line.packQty||0);text(quantity(totalQty,line.unit),139,y,{align:'right'});text(money(line.unitGross),169,y,{align:'right'});doc.setFont('helvetica','bold');text(money(line.gross),191,y,{align:'right'});
+  y+=height;doc.setDrawColor(226,232,223);doc.line(15,y-3,195,y-3);
  }
- if(y>225)page();y+=4;para(`Produtos sem impostos: ${money(order.net)}`);para(`Impostos informados: ${money(order.tax)}`);para(`Produtos com impostos: ${money(order.gross)}`);para(`Frete: ${freightKnown?money(freightCents):'a confirmar (não incluído)'}`);doc.setFont('helvetica','bold');para(`Total ${freightKnown?'do pedido':'estimado'}: ${money(order.total)}`);doc.setFont('helvetica','normal');
- if(buyer.notes){y+=4;para(`Observações: ${buyer.notes}`)}
- y+=4;para('Favor confirmar disponibilidade, validade, condições de pagamento e prazo de entrega.');
+ if(y>220)page();y+=4;doc.setFillColor(248,250,247);doc.roundedRect(105,y,90,39,3,3,'F');doc.setFontSize(8);doc.setFont('helvetica','normal');text('Produtos sem impostos',110,y+8);text(money(order.net),190,y+8,{align:'right'});text('Impostos informados',110,y+15);text(money(order.tax),190,y+15,{align:'right'});text('Produtos com impostos',110,y+22);text(money(order.gross),190,y+22,{align:'right'});text('Frete',110,y+29);text(freightKnown?money(freightCents):'A confirmar',190,y+29,{align:'right'});doc.setFillColor(76,151,63);doc.roundedRect(105,y+32,90,15,3,3,'F');doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(11);text(freightKnown?'TOTAL DO PEDIDO':'TOTAL ESTIMADO',110,y+42);text(money(order.total),190,y+42,{align:'right'});doc.setTextColor(33,48,36);y+=54;
+ const notices=[];if(buyer.notes)notices.push(`Observações: ${buyer.notes}`);notices.push('Favor confirmar disponibilidade, validade, condições de pagamento e prazo de entrega.');const noticeLines=notices.flatMap(note=>doc.splitTextToSize(clean(note),168)),noticeHeight=noticeLines.length*5+8;ensure(noticeHeight);doc.setFillColor(buyer.notes?255:238,buyer.notes?249:247,buyer.notes?232:232);doc.roundedRect(15,y-4,180,noticeHeight,3,3,'F');doc.setFont('helvetica','bold');doc.setFontSize(8.5);noticeLines.forEach((line,i)=>text(line,20,y+2+i*5));y+=noticeHeight+3;
  const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);text(`Página ${i} de ${n}`,195,286,{align:'right'})}
  return new Uint8Array(doc.output('arraybuffer'));
 }
