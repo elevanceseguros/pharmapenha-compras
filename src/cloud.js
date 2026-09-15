@@ -3,8 +3,9 @@ const key=String(__SUPABASE_KEY__||'');
 const sessionKey='pharmapenha-cloud-session';
 export const cloudConfigured=Boolean(url&&key);
 let session=null;
-try{session=JSON.parse(localStorage.getItem(sessionKey)||'null')}catch{}
-function saveSession(next){session=next;if(next)localStorage.setItem(sessionKey,JSON.stringify(next));else localStorage.removeItem(sessionKey)}
+try{session=JSON.parse(sessionStorage.getItem(sessionKey)||localStorage.getItem(sessionKey)||'null')}catch{}
+function saveSession(next){session=next;localStorage.removeItem(sessionKey);sessionStorage.removeItem(sessionKey);if(next)(next._app_storage==='browser'?sessionStorage:localStorage).setItem(sessionKey,JSON.stringify(next))}
+if(session&&!session._app_storage){session._app_storage='local';session._app_until=Date.now()+6*60*60*1000;saveSession(session)}
 async function authRequest(path,body){
  let response;
  try{response=await fetch(url+'/auth/v1/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)})}
@@ -15,8 +16,9 @@ async function authRequest(path,body){
 }
 async function activeSession(){
  if(!session)return null;
+ if(session._app_until&&Date.now()>=session._app_until){saveSession(null);return null}
  if((session.expires_at||0)*1000>Date.now()+60000)return session;
- try{const next=await authRequest('token?grant_type=refresh_token',{refresh_token:session.refresh_token});saveSession(next);return next}catch{saveSession(null);return null}
+ try{const storage=session._app_storage,until=session._app_until,next=await authRequest('token?grant_type=refresh_token',{refresh_token:session.refresh_token});next._app_storage=storage;if(until)next._app_until=until;saveSession(next);return next}catch{saveSession(null);return null}
 }
 async function headers(extra={}){
  const current=await activeSession();
@@ -35,7 +37,7 @@ export async function getAppMember(){
  const rows=await rest('app_members?select=id,email,name,role,active&id=eq.'+encodeURIComponent(current.user.id));
  return rows?.[0]||null;
 }
-export async function signIn(email,password){const next=await authRequest('token?grant_type=password',{email,password});saveSession(next);return next.user}
+export async function signIn(email,password,mode='6'){const next=await authRequest('token?grant_type=password',{email,password});if(mode==='browser')next._app_storage='browser';else{next._app_storage='local';if(mode!=='persistent')next._app_until=Date.now()+(mode==='4'?4:6)*60*60*1000}saveSession(next);return next.user}
 export async function signOut(){try{const current=await activeSession();if(current)await fetch(url+'/auth/v1/logout',{method:'POST',headers:{apikey:key,Authorization:'Bearer '+current.access_token}})}finally{saveSession(null)}}
 export async function listCloudRounds(){return await rest('quotation_rounds?select=id,title,status,state,created_at,updated_at&order=updated_at.desc')}
 export async function listProductAliases(){return await rest('product_aliases?select=id,alias,canonical,alias_key,canonical_key&order=updated_at.desc')}
