@@ -73,6 +73,12 @@ export function aggregateEquivalentItems(state){
  }
  return next;
 }
+export function absorbOrphanedItem(state,sourceId,targetId){
+ if(!sourceId||sourceId===targetId||state.offers.some(o=>o.productId===sourceId))return false;
+ const source=state.items.find(i=>i.id===sourceId),target=state.items.find(i=>i.id===targetId);if(!source||!target||source.unit!==target.unit)return false;
+ target.qty=Math.max(target.qty,source.qty);target.enabled=target.enabled!==false||source.enabled!==false;target.allowExcess=Boolean(target.allowExcess||source.allowExcess);if(target.lock!==source.lock)target.lock='';
+ state.items=state.items.filter(i=>i.id!==sourceId);return true;
+}
 export function decimal(s){
  if(typeof s==='number')return s;
  const v=String(s).trim().replace(/R\$/g,'').replace(/\s/g,'');
