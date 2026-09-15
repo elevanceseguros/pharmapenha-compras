@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {orderPDF,allPDFs,internalReportPDF} from '../src/pdf.js';
+import {orderPDF,allPDFs,internalReportPDF,quotationRequestPDF} from '../src/pdf.js';
 import {unzipSync} from 'fflate';
 test('PDF contém apenas o fornecedor escolhido e ZIP separa pedidos',()=>{
  const order={valid:true,supplier:{name:'Fornecedor A',freightCents:0,freightKnown:true},payment:'Boleto 28 dias',freightKnown:true,freightCents:1500,net:10000,gross:10650,tax:650,total:12150,lines:[{itemId:'item-a',description:'Castanha da Índia',reference:'COT-123',packs:2,packQty:250,unit:'g',unitGross:5325,gross:10650}]};
@@ -11,3 +11,4 @@ test('PDF contém apenas o fornecedor escolhido e ZIP separa pedidos',()=>{
  const internal=new TextDecoder('latin1').decode(internalReportPDF([order],audit,'Teste',new Date('2026-09-03T12:00:00Z')));assert.ok(internal.includes('USO INTERNO'));assert.ok(internal.includes('Fornecedor A'));assert.ok(internal.includes('Boleto 28 dias'));assert.ok(internal.includes('Total geral previsto'));assert.ok(internal.includes('121,50'));assert.ok(internal.includes('Gamma'));assert.ok(internal.includes('qualidade'));assert.ok(internal.includes('MENOR DESEMBOLSO'));assert.ok(internal.includes('ESCOLHIDA'));assert.ok(internal.includes('Fornecedor homologado'));assert.ok(!internal.includes('Concorrente secreto'));
  assert.throws(()=>orderPDF({...order,valid:false},{},'Teste'));
 });
+test('solicitação de cotação gera um único PDF neutro e igual para todos os fornecedores',()=>{const bytes=quotationRequestPDF([{name:'Creatina Monohidratada',qty:1000,unit:'g',enabled:true},{name:'Licopeno',qty:250,unit:'g',enabled:true}],{name:'Pharmapenha',cnpj:'60.348.547/0001-04',contact:'Compras'},'Cotação mensal',{deadline:'2026-09-20',notes:'Responder com a validade dos lotes.'},new Date('2026-09-15T12:00:00Z')),text=new TextDecoder('latin1').decode(bytes);assert.ok(text.startsWith('%PDF-'));assert.ok(text.includes('SOLICITAÇÃO DE COTAÇÃO'));assert.ok(text.includes('Creatina Monohidratada'));assert.ok(text.includes('1 kg'));assert.ok(text.includes('Licopeno'));assert.ok(text.includes('250 g'));assert.ok(text.includes('20/09/2026'));assert.ok(text.includes('mesmo documento'));assert.ok(!text.includes('Fornecedor:'))});
