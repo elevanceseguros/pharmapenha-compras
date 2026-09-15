@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,productKey,equivalentProduct,equivalentGroups,aggregateEquivalentItems} from '../src/core.js';
+import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,productKey,equivalentProduct,productSimilarity,equivalentGroups,aggregateEquivalentItems} from '../src/core.js';
 import {parseQuotation} from '../src/import.js';
 import {materialSynonyms} from '../src/synonyms.generated.js';
 const supplier=(id,min=0,freight=0)=>({id,name:id,minCents:min,freightCents:freight,minimumBasis:'net',freightKnown:true});
@@ -77,6 +77,19 @@ test('sugere um único grupo entre fornecedores e escolhe o nome mais simples',(
 test('não sugere sais conhecidos como diferentes',()=>{
  const items=[{...item('a'),name:'Aspartato de Magnésio'},{...item('b'),name:'Magnésio Taurato'}],offers=[offer('1','a','X',100),offer('2','b','Y',100)];
  assert.equal(equivalentGroups(items,offers,[],[]).length,0);
+});
+test('ignora complementos comerciais sem apagar nomes legítimos',()=>{
+ for(const name of ['Bupropiona C1','Bupropiona B1','Bupropiona (P.344)','Bupropiona Brasil','Bupropiona China','Bupropiona Índia','Bupropiona 10%','Bupropiona lote ABC123 validade 09/2028'])assert.equal(equivalentProduct('Bupropiona',name),true,name);
+ assert.equal(equivalentProduct('Vitamina B1','Vitamina'),false);
+ assert.equal(equivalentProduct('Castanha da Índia','Castanha'),false);
+});
+test('ignora forma seca, hidratação, anidro e anidra',()=>{
+ for(const name of ['Produto Extrato Seco','Produto em Pó','Produto Monohidratado','Produto Monohidratada','Produto Anidro','Produto Anidra','Produto 10:1','Produto 20:1','Produto 10x1'])assert.equal(equivalentProduct('Produto',name),true,name);
+});
+test('reconhece variações próximas de idioma e grafia',()=>{assert.equal(equivalentProduct('Licopeno','Lycopene'),true);assert.ok(productSimilarity('Riboflavina','Riboflavin')>=.8)});
+test('tintura sugere glicólico ou fluido sem unir glicólico a fluido',()=>{
+ const items=[{...item('t'),name:'Tintura de Hamamelis'},{...item('g'),name:'Extrato Glicólico de Hamamelis'},{...item('f'),name:'Extrato Fluido de Hamamelis'}],offers=[offer('1','t','X',100),offer('2','g','Y',100),offer('3','f','Z',100)];
+ assert.equal(productSimilarity(items[1].name,items[2].name),0);const groups=equivalentGroups(items,offers,[],[]);assert.equal(groups.length,2);assert.ok(groups.every(group=>group.alternatives[0].name.includes('Tintura')));assert.ok(groups.some(group=>group.primary.name.includes('Glicólico')));assert.ok(groups.some(group=>group.primary.name.includes('Fluido')));
 });
 test('agregador reúne ofertas sem somar a necessidade duplicada',()=>{
  const state={version:1,productAliases:[],suppliers:[supplier('X'),supplier('Y')],items:[{...item('a'),name:'Gingko biloba',qty:100},{...item('b'),name:'Ginkgo biloba 28%',qty:200}],offers:[offer('1','a','X',10000),offer('2','b','Y',18000)]};

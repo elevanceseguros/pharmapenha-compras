@@ -3,19 +3,25 @@ export const defaultSuppliers = [
 ].map(([name,min],i)=>({id:`s${i+1}`,name,minCents:min*100,freightCents:0,freightKnown:false,minimumBasis:'net'}));
 export const money = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 export const normalize = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function cleanProductText(name){
+ const source=String(name).replace(/\b\d+(?:[.,]\d+)?\s*%/g,' ').replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ').replace(/\b\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?\b.*$/g,' ');
+ let value=normalize(source).replace(/\b(?:lote|lot|validade|vencimento)\b.*$/g,' ').replace(/\bp\s*344\b/g,' ').replace(/\b(?:lycopene|licopene)\b/g,'licopeno').replace(/\bgingko\b/g,'ginkgo').replace(/\b(?:tricoxin|trichoxin)\b/g,'auxina tricogena');
+ if(!/\b(?:vitamina|tiamina)\s+b1\b/.test(value))value=value.replace(/\b(?:b1|c1)\b/g,' ');
+ value=value.replace(/\b(?:brasil|china)\b/g,' ');
+ if(!/\b(?:castanha|noz)\s+da\s+india\b/.test(value))value=value.replace(/\bindia\b/g,' ');
+ return value.replace(/\s+/g,' ').trim();
+}
 export function productKey(name,aliases=[]){
- const raw=normalize(name).replace(/\bgingko\b/g,'ginkgo').replace(/\b(?:tricoxin|trichoxin)\b/g,'auxina tricogena');
- const learned=aliases.find(a=>normalize(a.alias)===raw);
- if(learned&&normalize(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
+ const raw=cleanProductText(name);
+ const learned=aliases.find(a=>cleanProductText(a.alias)===raw);
+ if(learned&&cleanProductText(learned.canonical)!==raw)return productKey(learned.canonical,aliases.filter(a=>a!==learned));
 	 let chemicalForm=/\b(?:magnesio|calcio|zinco|cobre|ferro|manganes|cromo|selenio)\b/.test(raw)?raw.replace(/\b(?:quelato|quelatado|quelatada|glicina|bisglicinato|bisglicinata)\b/g,'quelato'):raw;
 	 chemicalForm=chemicalForm.replace(/\bquelato\s+(?:de\s+)?(magnesio|calcio|zinco|cobre|ferro|manganes|cromo|selenio)\b/g,'$1 quelato');
 	 const simplified=chemicalForm
 	  .replace(/\bp\s*\d+\b/g,' ')
 	  .replace(/\b(?:hcl|hidrocloreto|cloridrato)\b/g,' ')
 	  .replace(/\b(?:de|da|do|das|dos)\b/g,' ')
-	  .replace(/\b\d+(?:[.,]\d+)?\s*(?:por cento)?\b/g,' ')
-  .replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ')
-  .replace(/\b(?:extrato seco|ext seco|e s|extrato|em po|po)\b/g,' ')
+	  .replace(/\b(?:extrato seco|ext seco|e s|extrato|em po|po)\b/g,' ')
   .replace(/\b(?:anidro|anidra|hidratado|hidratada|monohidratado|monohidratada|dihidratado|dihidratada|trihidratado|trihidratada|tetrahidratado|tetrahidratada|tetrahidrata|tetrahidrato)\b/g,' ')
   .replace(/\s+/g,' ').trim();
  let catalog=materialSynonyms[chemicalForm];
@@ -25,13 +31,18 @@ export function productKey(name,aliases=[]){
 }
 export const equivalentProduct=(a,b,aliases=[])=>productKey(a,aliases)===productKey(b,aliases);
 export const synonymStats={materials:new Set(Object.values(materialSynonyms)).size,names:Object.keys(materialSynonyms).length,ambiguous:Object.keys(materialSynonymConflicts).length};
+function plantForm(name){const value=cleanProductText(name);if(/\bextrato\s+glicolico\b/.test(value))return'glicolico';if(/\bextrato\s+fluido\b/.test(value))return'fluido';if(/\btintura\b/.test(value))return'tintura';return''}
+function plantBase(name){return cleanProductText(name).replace(/\b(?:tintura|extrato\s+glicolico|extrato\s+fluido)\b/g,' ').replace(/\b(?:de|da|do|das|dos)\b/g,' ').replace(/\s+/g,' ').trim()}
+function editSimilarity(a,b){const x=String(a),y=String(b),row=Array.from({length:y.length+1},(_,i)=>i);for(let i=1;i<=x.length;i++){let previous=row[0];row[0]=i;for(let j=1;j<=y.length;j++){const old=row[j];row[j]=Math.min(row[j]+1,row[j-1]+1,previous+(x[i-1]===y[j-1]?0:1));previous=old}}return 1-row[y.length]/Math.max(x.length,y.length,1)}
 export function productSimilarity(a,b,aliases=[]){
  if(equivalentProduct(a,b,aliases))return 1;
+ const formA=plantForm(a),formB=plantForm(b);if(plantBase(a)===plantBase(b)&&plantBase(a)){if(new Set([formA,formB]).has('glicolico')&&new Set([formA,formB]).has('fluido'))return 0;if(formA==='tintura'&&(formB==='glicolico'||formB==='fluido')||formB==='tintura'&&(formA==='glicolico'||formA==='fluido'))return .95}
  const stop=new Set(['de','da','do','das','dos','e','para','com','como']);
  const tokens=s=>new Set(productKey(s,aliases).split(' ').filter(x=>x.length>1&&!stop.has(x)));
  const x=tokens(a),y=tokens(b);if(!x.size||!y.size)return 0;
  const common=[...x].filter(t=>y.has(t)).length;
- return common/Math.max(x.size,y.size);
+ const words=common/Math.max(x.size,y.size),left=[...x].join(' '),right=[...y].join(' '),spelling=Math.min(left.length,right.length)>=6&&Math.abs(left.length-right.length)<=3?editSimilarity(left,right):0;
+ return Math.max(words,spelling>=.8?spelling:0);
 }
 function nameComplexity(name){
  const value=normalize(name),qualifiers=(value.match(/\b(?:hcl|hidrocloreto|cloridrato|extrato|ext|seco|anidro|hidratado|quelato|glicina|bisglicinato|p\s*\d+|\d+)\b/g)||[]).length;
@@ -41,13 +52,15 @@ export function equivalentGroups(items,offers,aliases=[],ignored=[]){
  const quoted=items.filter(item=>offers.some(offer=>offer.productId===item.id)),parent=new Map(quoted.map(item=>[item.id,item.id]));
  const root=id=>{let current=id;while(parent.get(current)!==current)current=parent.get(current);return current};
  const join=(a,b)=>{const x=root(a),y=root(b);if(x!==y)parent.set(y,x)};
- const ignoredKey=(a,b)=>[normalize(a.name),normalize(b.name)].sort().join('|');
- for(let a=0;a<quoted.length;a++)for(let b=a+1;b<quoted.length;b++){const x=quoted[a],y=quoted[b];if(x.unit===y.unit&&!ignored.includes(ignoredKey(x,y))&&productSimilarity(x.name,y.name,aliases)>=.6)join(x.id,y.id)}
+ const ignoredKey=(a,b)=>[normalize(a.name),normalize(b.name)].sort().join('|'),ambiguous=[];
+ for(let a=0;a<quoted.length;a++)for(let b=a+1;b<quoted.length;b++){const x=quoted[a],y=quoted[b],forms=[plantForm(x.name),plantForm(y.name)];if(x.unit!==y.unit||ignored.includes(ignoredKey(x,y))||productSimilarity(x.name,y.name,aliases)<.6)continue;if(forms.includes('tintura')&&(forms.includes('glicolico')||forms.includes('fluido')))ambiguous.push([x,y]);else join(x.id,y.id)}
  const sets=new Map();for(const item of quoted){const key=root(item.id);if(!sets.has(key))sets.set(key,[]);sets.get(key).push(item)}
- return [...sets.values()].filter(group=>group.length>1&&new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId))).size>1).map(group=>{
+ const regular=[...sets.values()].filter(group=>group.length>1&&new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId))).size>1).map(group=>{
   const ordered=[...group].sort((a,b)=>nameComplexity(a.name)-nameComplexity(b.name)||a.name.localeCompare(b.name,'pt-BR'));
   return {primary:ordered[0],alternatives:ordered.slice(1),supplierIds:[...new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId)))]};
  });
+ const botanical=ambiguous.filter(group=>new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId))).size>1).map(group=>{const primary=group.find(item=>plantForm(item.name)!=='tintura'),alternative=group.find(item=>item.id!==primary.id);return{primary,alternatives:[alternative],supplierIds:[...new Set(group.flatMap(item=>offers.filter(o=>o.productId===item.id).map(o=>o.supplierId)))]}});
+ return [...regular,...botanical];
 }
 export function aggregateEquivalentItems(state){
  const next=structuredClone(state),aliases=next.productAliases||[],groups=new Map();
