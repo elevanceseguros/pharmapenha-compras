@@ -13,7 +13,7 @@ export function parseQuotation(text){
  if(detected==='Biovital')for(let i=1;i<sourceLines.length;i++){const product=sourceLines[i].replace(/\s+/g,' ').trim().match(/^(.*?)\s*\(([\d.,]+)\s*(KG|G|L|ML|UN)\)\s*$/i);if(!product)continue;const prior=sourceLines[i-1].replace(/\s+/g,' ').trim(),prices=[...prior.matchAll(/(?:^|\s)(\d+[.,]\d{2})(?=\s|$)/g)].map(m=>m[1]);if(prices.length)add(product[1],product[2],product[3],prices.at(-1),prices.at(-1),{source:`${prior} ${sourceLines[i]}`})}
  let pending='';const fractionNames=new Map();
  for(const raw of sourceLines){
-  const line=raw.replace(/\s+/g,' ').replace(/\s+[–—-]\s+Sug\.\s+\w+/i,'').trim();if(!line)continue;
+  const line=raw.replace(/_+/g,' ').replace(/\s+/g,' ').replace(/\s+[–—-]\s+Sug\.\s+\w+/i,'').trim();if(!line)continue;
   // Modelo Embrafarma / All Premium: quantidade, unidade, unitário e total final.
   const premium=line.match(/^\d+\s+(.*?)\s+([\d.,]+)\s+(KG|GR|G|L|ML|UN)\s+([\d.,]+)\s+[\d.,]+\s+\d+(?:[.,]\d+)?%\s+([\d.,]+)\s+(\d{2}\/\d{4})/i);
   if(premium){add(premium[1],premium[2],premium[3].replace(/^GR$/i,'G'),premium[5],premium[5],{validity:premium[6],source:line});continue}
@@ -39,7 +39,7 @@ export function parseQuotation(text){
   if(irial){add(irial[1],irial[2],irial[3],irial[4],irial[4],{validity:irial[5]||'',source:line});continue}
   // Exata: produto, lote, validade, quantidade, grade da embalagem e valores.
   const exata=line.match(/^\d+[ .]\s*\d+\s+(.*?)\s+\S+\s+(\S+)\s+(\d+)\s+[^\d]*([\d.,]+)\s*[-_ ]\s*(KG|G|L|ML|UN)[-_ ]*([\d.,]+)/i);
-  if(exata){add(exata[1],exata[4],exata[5],exata[6],exata[6],{quotedPacks:decimal(exata[3]),validity:exata[2],source:line});continue}
+  if(exata){const product=exata[1].replace(/\s+[A-Z0-9*()/-]*\d[A-Z0-9*()/.-]*$/i,'').trim();add(product,exata[4],exata[5],exata[6],exata[6],{quotedPacks:decimal(exata[3]),validity:exata[2],source:line});continue}
   // Biovital: a linha numérica é seguida pelo nome e pela embalagem entre parênteses.
   if(detected==='Biovital'&&/\d{2}\/\d{2}\/\d{4}.*\d+[,.]\d{2}/.test(line)){pending=line;unparsed.push(line);continue}
   const bio=line.match(/^(.*?)\s*\(([\d.,]+)\s*(KG|G|L|ML|UN)\)\s*$/i);
@@ -82,12 +82,13 @@ export async function pdfText(file){
 let ocrWorker,ocrProgress;
 async function worker(onProgress){
  ocrProgress=onProgress;
- if(!ocrWorker){const {createWorker}=await import('tesseract.js'),langPath=new URL('tessdata',document.baseURI).href.replace(/\/$/,'');ocrWorker=await createWorker('por',1,{langPath,logger:m=>{if(m.status==='recognizing text')ocrProgress?.(Math.round((m.progress||0)*100))}})}
+ if(!ocrWorker){const {createWorker}=await import('tesseract.js'),langPath=new URL('tessdata',document.baseURI).href.replace(/\/$/,'');ocrWorker=await createWorker('por',1,{langPath,logger:m=>{if(m.status==='recognizing text')ocrProgress?.(Math.round((m.progress||0)*100))}});await ocrWorker.setParameters({preserve_interword_spaces:'1'})}
  return ocrWorker;
 }
+async function preparedImage(source){const bitmap=await createImageBitmap(source),scale=Math.min(3,Math.max(1,2200/bitmap.width)),canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);const ctx=canvas.getContext('2d');ctx.filter='grayscale(1) contrast(1.45)';ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();return canvas}
 export async function imageText(file,onProgress){
  if(file.size>20*1024*1024)throw Error('A imagem excede 20 MB. Envie uma foto menor.');
- const w=await worker(onProgress),result=await w.recognize(file);const text=result.data.text.trim();
+ const w=await worker(onProgress),canvas=await preparedImage(file),result=await w.recognize(canvas);const text=result.data.text.trim();
  if(text.length<20)throw Error('Não consegui ler texto suficiente nesta imagem. Tente uma foto mais nítida, reta e bem iluminada.');
  return text;
 }
@@ -95,7 +96,7 @@ async function scannedPDFText(file,onProgress){
  const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');const workerURL=(await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;pdfjs.GlobalWorkerOptions.workerSrc=workerURL;
  const task=pdfjs.getDocument({data:await file.arrayBuffer(),isEvalSupported:false});const texts=[];
  try{const doc=await task.promise;if(doc.numPages>20)throw Error('PDF digitalizado com mais de 20 páginas. Divida o documento para usar o reconhecimento de imagem.');
-  const ocr=await worker();for(let i=1;i<=doc.numPages;i++){ocrProgress=p=>onProgress?.({page:i,pages:doc.numPages,percent:p});onProgress?.({page:i,pages:doc.numPages,percent:0});const page=await doc.getPage(i),viewport=page.getViewport({scale:2}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const result=await ocr.recognize(canvas,{}, {text:true});texts.push(result.data.text);onProgress?.({page:i,pages:doc.numPages,percent:100})}
+  const ocr=await worker();for(let i=1;i<=doc.numPages;i++){ocrProgress=p=>onProgress?.({page:i,pages:doc.numPages,percent:p});onProgress?.({page:i,pages:doc.numPages,percent:0});const page=await doc.getPage(i),viewport=page.getViewport({scale:2}),canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;const enhanced=await preparedImage(canvas),result=await ocr.recognize(enhanced,{}, {text:true});texts.push(result.data.text);onProgress?.({page:i,pages:doc.numPages,percent:100})}
  }finally{await task.destroy()}
  const text=texts.join('\n').trim();if(text.length<20)throw Error('Não consegui ler texto suficiente neste PDF escaneado. Tente um arquivo mais nítido.');return text;
 }
