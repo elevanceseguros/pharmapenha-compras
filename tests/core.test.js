@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,choiceHighlights,validateState,productKey,equivalentProduct,productSimilarity,equivalentGroups,aggregateEquivalentItems,absorbOrphanedItem} from '../src/core.js';
+import {defaultSuppliers,optimize,quantity,candidates,ordersFor,lowestSelections,isLowestOutlayChoice,choiceHighlights,validateState,productKey,equivalentProduct,productSimilarity,equivalentGroups,aggregateEquivalentItems,absorbOrphanedItem} from '../src/core.js';
 import {parseQuotation} from '../src/import.js';
 import {materialSynonyms} from '../src/synonyms.generated.js';
 const supplier=(id,min=0,freight=0)=>({id,name:id,minCents:min,freightCents:freight,minimumBasis:'net',freightKnown:true});
@@ -18,6 +18,7 @@ test('libera pedido abaixo do mínimo com fornecedor único',()=>{const p=optimi
 test('menor desembolso vence mesmo quando há mais de um fornecedor',()=>{const p=optimize([item('a')],[offer('1','a','X',1200),offer('2','a','Y',1500)],[supplier('X',50000),supplier('Y',50000)],params);assert.equal(p.status,'feasible');assert.equal(p.lines[0].supplierId,'X')});
 test('embalagem menor pode vencer preço por grama menor quando reduz o desembolso',()=>{const requested={...item('oxandrolona',20),allowExcess:true},sixty=offer('s','oxandrolona','Sixty',200000,50),puri=offer('p','oxandrolona','Puri',180000,20),p=optimize([requested],[sixty,puri],[supplier('Sixty',50000),supplier('Puri',60000)],params);assert.ok(sixty.grossCents/sixty.packQty<puri.grossCents/puri.packQty);assert.equal(p.lines[0].supplierId,'Puri');assert.equal(p.lines[0].qty,20);assert.equal(p.lines[0].gross,180000)});
 test('seleção final marca o menor desembolso entre todas as opções exibidas',()=>{const choices=[{itemId:'a',offerId:'cara',gross:25000,excess:0},{itemId:'a',offerId:'barata',gross:18000,excess:50},{itemId:'b',offerId:'empate-excesso',gross:10000,excess:20},{itemId:'b',offerId:'empate-exato',gross:10000,excess:0}];assert.deepEqual(lowestSelections(choices),{a:'barata',b:'empate-exato'})});
+test('escolha mais cara exige justificativa enquanto empate no menor valor não exige',()=>{const choices=[{itemId:'a',offerId:'barata',gross:10000},{itemId:'a',offerId:'empate',gross:10000},{itemId:'a',offerId:'cara',gross:12000}];assert.equal(isLowestOutlayChoice(choices,'a','barata'),true);assert.equal(isLowestOutlayChoice(choices,'a','empate'),true);assert.equal(isLowestOutlayChoice(choices,'a','cara'),false)});
 test('destaca separadamente menor preço por grama e menor desembolso',()=>{const h=choiceHighlights([{itemId:'a',offerId:'sixty',gross:200000,pricePerUnit:4000},{itemId:'a',offerId:'puri',gross:180000,pricePerUnit:9000}]);assert.equal(h.sixty.lowestUnit,true);assert.equal(h.sixty.lowestOutlay,false);assert.equal(h.puri.lowestUnit,false);assert.equal(h.puri.lowestOutlay,true);assert.equal(h.puri.savingsAgainstUnitBest,20000);assert.equal(h.puri.unitPremiumPercent,125)});
 test('arredondamento de embalagem exige autorização',()=>{const s=[supplier('X')],o=[offer('1','a','X',10000,200)];assert.equal(optimize([item('a')],o,s,params).status,'missing');const p=optimize([{...item('a'),allowExcess:true}],o,s,params);assert.equal(p.lines[0].excess,100)});
 test('mínimo exclui frete e impostos por padrão',()=>{const o={...offer('1','a','X',60000),netCents:50000},line=candidates(item('a'),[o],[supplier('X',60000,20000)])[0];assert.equal(ordersFor([line],[supplier('X',60000,20000)])[0].meetsMinimum,false);assert.equal(ordersFor([line],[{...supplier('X',60000),minimumBasis:'gross'}])[0].meetsMinimum,true)});
@@ -62,6 +63,7 @@ test('HCl, cloridrato e ordem das palavras representam o mesmo insumo-base',()=>
  assert.equal(equivalentProduct('Bupropiona HCl','Buspirona HCl'),false);
  assert.equal(equivalentProduct('Aspartato de Magnésio','Magnésio Taurato'),false);
 });
+test('código regulatório P344/98 C1 não separa a mesma matéria-prima',()=>{assert.equal(equivalentProduct('Naltrexona P344/98 C1','Naltrexona'),true);assert.equal(productKey('Naltrexona P.344 / 98 C1'),productKey('Naltrexona'))});
 test('formas quelato, glicina e bisglicinato se equivalem sem virar mineral puro',()=>{
  assert.equal(equivalentProduct('Magnésio quelato','Magnésio glicina'),true);
  assert.equal(equivalentProduct('Magnésio glicina','Bisglicinato de magnésio'),true);

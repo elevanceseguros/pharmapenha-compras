@@ -4,7 +4,7 @@ export const defaultSuppliers = [
 export const money = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 export const normalize = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 function cleanProductText(name){
- const source=String(name).replace(/\b\d+(?:[.,]\d+)?\s*%/g,' ').replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ').replace(/\b\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?\b.*$/g,' ');
+ const source=String(name).replace(/\bp\s*\.?\s*344(?:\s*[\/-]\s*\d+)?\b/gi,' ').replace(/\b\d+(?:[.,]\d+)?\s*%/g,' ').replace(/\b\d+\s*(?:x|:)\s*\d+\b/g,' ').replace(/\b\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?\b.*$/g,' ');
  let value=normalize(source).replace(/\b(?:lote|lot|validade|vencimento)\b.*$/g,' ').replace(/\bp\s*344\b/g,' ').replace(/\b(?:lycopene|licopene)\b/g,'licopeno').replace(/\bgingko\b/g,'ginkgo').replace(/\b(?:tricoxin|trichoxin)\b/g,'auxina tricogena');
  if(!/\b(?:vitamina|tiamina)\s+b1\b/.test(value))value=value.replace(/\b(?:b1|c1)\b/g,' ');
  value=value.replace(/\b(?:brasil|china)\b/g,' ');
@@ -67,7 +67,7 @@ export function aggregateEquivalentItems(state){
  for(const item of next.items){
   const key=`${item.unit}:${productKey(item.name,aliases)}`,target=groups.get(key);
   if(!target){groups.set(key,item);continue}
-  target.qty=Math.max(target.qty,item.qty);target.enabled=target.enabled!==false||item.enabled!==false;target.allowExcess=Boolean(target.allowExcess||item.allowExcess);if(target.lock!==item.lock)target.lock='';
+  target.qty=Math.max(target.qty,item.qty);target.enabled=target.enabled!==false||item.enabled!==false;target.allowExcess=Boolean(target.allowExcess||item.allowExcess);target.deferred=Boolean(target.deferred&&item.deferred);if(target.lock!==item.lock)target.lock='';
   for(const offer of next.offers)if(offer.productId===item.id)offer.productId=target.id;
   next.items=next.items.filter(x=>x.id!==item.id);
  }
@@ -76,7 +76,7 @@ export function aggregateEquivalentItems(state){
 export function absorbOrphanedItem(state,sourceId,targetId){
  if(!sourceId||sourceId===targetId||state.offers.some(o=>o.productId===sourceId))return false;
  const source=state.items.find(i=>i.id===sourceId),target=state.items.find(i=>i.id===targetId);if(!source||!target||source.unit!==target.unit)return false;
- target.qty=Math.max(target.qty,source.qty);target.enabled=target.enabled!==false||source.enabled!==false;target.allowExcess=Boolean(target.allowExcess||source.allowExcess);if(target.lock!==source.lock)target.lock='';
+ target.qty=Math.max(target.qty,source.qty);target.enabled=target.enabled!==false||source.enabled!==false;target.allowExcess=Boolean(target.allowExcess||source.allowExcess);target.deferred=Boolean(target.deferred&&source.deferred);if(target.lock!==source.lock)target.lock='';
  state.items=state.items.filter(i=>i.id!==sourceId);return true;
 }
 export function decimal(s){
@@ -118,6 +118,9 @@ export function ordersFor(lines,suppliers,ignoreMinimum=false){
 }
 export function lowestSelections(choices){
  const best=new Map();for(const c of choices||[]){const old=best.get(c.itemId);if(!old||c.gross<old.gross||(c.gross===old.gross&&(c.excess||0)<(old.excess||0)))best.set(c.itemId,c)}return Object.fromEntries([...best].map(([itemId,c])=>[itemId,c.offerId]));
+}
+export function isLowestOutlayChoice(choices,itemId,offerId){
+ const rows=(choices||[]).filter(c=>c.itemId===itemId),chosen=rows.find(c=>c.offerId===offerId);if(!chosen||!rows.length)return false;return chosen.gross===Math.min(...rows.map(c=>c.gross));
 }
 export function choiceHighlights(choices){
  const groups=new Map(),result={};
