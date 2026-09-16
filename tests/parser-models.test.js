@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseQuotation} from '../src/import.js';
+import {parseQuotation,parseMeddixPurchaseSuggestion} from '../src/import.js';
+
+test('Meddix importa somente matérias-primas e usa a coluna Sugestão',()=>{
+ const text=`PHARMAPENHA Emissão: 16/09/2026 - 14:39
+Sugestão de compras
+Código Descrição Un. Diluição Consum 6m Mínimo Máximo Estoque Quarentena Custo Total Sugestão Valor
+Acabados
+8111 ACIDO HIALURÔNICO 5% 30GR G Puro 4,59
+021 - PHARMAPENHA 10,0000 11,0000 2,0000 0,0000 9,18 9,00 41,32
+8109 AKKERMAT 150MG 30 CÁPSULAS CA Puro 45,57
+021 - PHARMAPENHA 6,0000 7,0000 2,0000 0,0000 91,15 5,00 227,87
+Acabados 257,61 401,08
+Matéria-prima
+631 ALCOOL DE CEREAIS G Puro 0,01
+021 - PHARMAPENHA -17.656,0788 5.000,0000 7.700,0000 2.371,9212 0,0000 34,87 5.328,08 78,32
+5171 CAPSULAS OMEGA 3 1GRAMA CA Puro 0,39
+021 - PHARMAPENHA -15.845,0000 1.100,0000 1.500,0000 300,0000 0,0000 117,00 1.200,00 468,00
+3219 NALTREXONA (COMO CLORIDRATO) G Puro 36,00
+021 - PHARMAPENHA -245,9590 10,0000 12,0000 3,9990 0,0000 143,96 8,00 288,04
+Matéria-prima 1.319,95 5.306,08
+MEDDIX - Versão 1.1.0.421`;
+ const parsed=parseMeddixPurchaseSuggestion(text);
+ assert.equal(parsed.detected,true);assert.equal(parsed.finishedIgnored,2);assert.equal(parsed.rows.length,3);
+ assert.deepEqual(parsed.rows.map(row=>[row.code,row.name,row.qty,row.unit]),[['631','ALCOOL DE CEREAIS',5328.08,'g'],['5171','CAPSULAS OMEGA 3 1GRAMA',1200,'un'],['3219','NALTREXONA (COMO CLORIDRATO)',8,'g']]);
+});
 
 test('reconhece os novos modelos de cotação enviados',()=>{
  const samples=[

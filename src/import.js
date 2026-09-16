@@ -2,6 +2,36 @@ import {decimal,quantity} from './core.js';
 const SUPPLIER_HINTS=[['Sovita',/sovita/i],['Infinity Pharma',/infinity\s*pharma/i],['PN farma',/pn\s*farma|pn farmac/i],['Biovital',/biovital/i],['Galena',/galena qu[ií]mica|galena digital/i],['Purifarma',/purifarma/i],['Exata',/exata (?:suprimentos|suprmentos|distribui)/i],['Irial Mag',/irial ?mag|lri[ca]l.?mag/i],['Valdequimica',/valdequ/i],['Embrafarma (All Premium)',/all\s*premium|embrafarma/i],['Caldic',/caldic|fracionamento.*encargos|pre[cç]o g\/mlh|66111091[-.]979/i],['Gamma',/gamma/i],['Iberoquimica',/ibero\s*qu[ií]mica/i],['Cosmetrade',/cosmetrade/i],['Lemma',/lemma/i],['Formus',/formus/i],['Nutrifarm',/nutrifarm/i],['Florien',/florien/i],['Global Supplies',/global supplies/i],['Sixty Pharma',/sixty pharma/i]];
 const unitToken='KG|GR|G|MLH|MIL|ML|L|UN|UND|UNID(?:ADE)?S?';
 const junkName=/^(?:produto|descri[cç][aã]o|insumo|item|quantidade|qtd|qtde|embalagem|pre[cç]o|valor|total|validade|origem|cota[cç][aã]o)(?:\s|$)/i;
+
+export function parseMeddixPurchaseSuggestion(text){
+ const lines=String(text||'').split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean),rows=[];
+ let section='',pending=null,finishedIgnored=0;
+ const itemPattern=/^(\d+)\s+(.+?)\s+(KG|MG|MLH|MIL|ML|CA|UN|UND|L|G)\s+(?:Puro|Dilu[ií]do)\b/i;
+ const numberPattern=/-?\d[\d.]*,\d+/g;
+ const unitMap={G:'g',KG:'kg',MG:'mg',ML:'ml',L:'l',CA:'un',UN:'un',UND:'un',MLH:'mlh',MIL:'mil'};
+ for(const line of lines){
+  if(/^Acabados(?:\s|$)/i.test(line)){section='finished';pending=null;continue}
+  if(/^Mat[eé]ria-prima\s*$/i.test(line)){section='materials';pending=null;continue}
+  if(/^Mat[eé]ria-prima\s+[\d.,]/i.test(line)){section='done';pending=null;continue}
+  const item=line.match(itemPattern);
+  if(item){
+   if(section==='finished'){finishedIgnored++;continue}
+   if(section!=='materials')continue;
+   pending={code:item[1],name:item[2].trim(),sourceUnit:item[3].toUpperCase()};continue;
+  }
+  if(section!=='materials'||!pending||!/^021\s*-\s*PHARMAPENHA\b/i.test(line))continue;
+  const numbers=line.match(numberPattern)||[];
+  if(numbers.length<2){pending=null;continue}
+  const suggested=decimal(numbers.at(-2));
+  try{
+   const q=quantity(suggested,unitMap[pending.sourceUnit]);
+   rows.push({...pending,...q});
+  }catch{}
+  pending=null;
+ }
+ return {rows,finishedIgnored,detected:/Sugest[aã]o de compras/i.test(text)&&/MEDDIX/i.test(text)};
+}
+
 function flexibleLine(raw){
  const line=String(raw).replace(/[\t_]+/g,' ').replace(/[•▪◦►▶]/g,' ').replace(/\*+/g,'').replace(/\s+/g,' ').trim();
  const amount=new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(${unitToken})\\b`,'i').exec(line);if(!amount)return null;

@@ -49,7 +49,7 @@ function nameComplexity(name){
  return qualifiers*100+value.split(' ').length*10+value.length;
 }
 export function equivalentGroups(items,offers,aliases=[],ignored=[]){
- const quoted=items.filter(item=>offers.some(offer=>offer.productId===item.id)),parent=new Map(quoted.map(item=>[item.id,item.id]));
+ const quoted=items.filter(item=>item.enabled!==false&&offers.some(offer=>offer.productId===item.id)),parent=new Map(quoted.map(item=>[item.id,item.id]));
  const root=id=>{let current=id;while(parent.get(current)!==current)current=parent.get(current);return current};
  const join=(a,b)=>{const x=root(a),y=root(b);if(x!==y)parent.set(y,x)};
  const ignoredKey=(a,b)=>[normalize(a.name),normalize(b.name)].sort().join('|'),ambiguous=[];
@@ -185,6 +185,7 @@ export function validateState(s){
  s.productAliases??=[];
  if(s.ignoredEquivalences!=null&&(!Array.isArray(s.ignoredEquivalences)||s.ignoredEquivalences.length>2000||s.ignoredEquivalences.some(x=>typeof x!=='string')))throw Error('Decisões de equivalência inválidas.');
  s.ignoredEquivalences??=[];
+ if(s.meddixReview!=null){const review=s.meddixReview;if(typeof review.sourceName!=='string'||typeof review.importedAt!=='string'||!Array.isArray(review.decisions)||review.decisions.length>300||review.decisions.some(x=>!x||typeof x.name!=='string'||!['g','ml','un'].includes(x.unit)||!Number.isFinite(x.qty)||x.qty<=0||typeof x.included!=='boolean'||(!x.included&&typeof x.reason!=='string')))throw Error('Revisão do Meddix inválida.');}
  return s;
 }
 import {materialSynonyms,materialSynonymConflicts} from './synonyms.generated.js';
