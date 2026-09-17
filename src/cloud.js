@@ -49,6 +49,7 @@ export async function deleteProductAlias(id){await rest('product_aliases?id=eq.'
 export async function saveCloudRound(id,state,status='draft'){
  const current=await activeSession();
  const body={title:state.title,status,state,updated_by:current.user.id};
+ if(!id){const matches=await rest('quotation_rounds?select=id&title=eq.'+encodeURIComponent(state.title)+'&order=updated_at.desc&limit=1');if(matches?.[0]?.id)id=matches[0].id}
  if(id){const rows=await rest('quotation_rounds?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});return rows[0]}
  body.created_by=current.user.id;
  const rows=await rest('quotation_rounds',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});return rows[0];

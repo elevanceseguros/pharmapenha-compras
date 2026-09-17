@@ -8,6 +8,11 @@ export function splitCents(total,count){if(!count)return[];const base=Math.floor
 export function scheduleFromTerms(total,terms,billingDate){const days=parsePaymentDays(terms),amounts=splitCents(total,days.length);return days.map((day,i)=>({id:crypto.randomUUID(),sequence:i+1,days:day,dueDate:addDays(billingDate,day),amountCents:amounts[i],paid:false,note:''}))}
 export function payableFromOrder(order,savedAt=new Date().toISOString(),existing=null){
  const billingDate=dateOnly(existing?.billingDate||savedAt),paymentTerms=order.payment||existing?.paymentTerms||'',total=Number(order.total||0);
- return {id:existing?.id||crypto.randomUUID(),supplierId:order.supplier.id,supplierName:order.supplier.name,orderSavedAt:savedAt,billingDate,paymentTerms,orderTotalCents:total,installments:scheduleFromTerms(total,paymentTerms,billingDate),updatedAt:new Date().toISOString()}
+ return {id:existing?.id||crypto.randomUUID(),supplierId:order.supplier.id,supplierName:order.supplier.name,orderSavedAt:savedAt,billingDate,paymentTerms,orderTotalCents:total,installments:scheduleFromTerms(total,paymentTerms,billingDate),verified:false,verifiedAt:null,updatedAt:new Date().toISOString()}
 }
 export function payableFromClosing(closing){return closing?.order?payableFromOrder(closing.order,closing.savedAt):null}
+export function roundTitleKey(value){return String(value||'').trim().toLocaleLowerCase('pt-BR')}
+export function dedupeRoundsByTitle(rows){
+ const sorted=[...rows].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)),seen=new Set();
+ return sorted.filter(row=>{const key=roundTitleKey(row.title||row.state?.title);if(!key||seen.has(key))return false;seen.add(key);return true})
+}
