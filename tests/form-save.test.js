@@ -10,7 +10,7 @@ test('salva oferta disponível mesmo com campo id oculto no formulário',()=>{
  let submit,changed=0,closed=0;
  const root={addEventListener:(event,fn)=>{submit=fn}};
  const document={querySelector:()=>({close:()=>closed++})};
- new Function('root','state','FormData','quantity','decimal','cents','normalize','document','changed','formError','pdfQueue','view',handler)(root,state,class{constructor(f){return f.fields}},quantity,decimal,cents,normalize,document,()=>changed++,msg=>{throw Error(msg)},[],'offers');
+ new Function('root','state','FormData','quantity','decimal','cents','normalize','document','changed','formError','pdfQueue','view','isFinanceRole','cloudMember',handler)(root,state,class{constructor(f){return f.fields}},quantity,decimal,cents,normalize,document,()=>changed++,msg=>{throw Error(msg)},[],'offers',()=>false,null);
  const fields=new Map(Object.entries({id:'o1',productId:'i1',supplierId:'s1',packQty:'1000',unit:'g',net:'178,00',gross:'178,00',available:'on',considered:'on',reviewed:'on'}));
  // HTML forms expose named controls as properties: form.id can be an input.
  const form={id:{value:'o1'},getAttribute:name=>name==='id'?'offer-form':null,fields};
