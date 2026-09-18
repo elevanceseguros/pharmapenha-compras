@@ -11,6 +11,12 @@ export function payableFromOrder(order,savedAt=new Date().toISOString(),existing
  return {id:existing?.id||crypto.randomUUID(),supplierId:order.supplier.id,supplierName:order.supplier.name,orderSavedAt:savedAt,billingDate,paymentTerms,orderTotalCents:total,installments:scheduleFromTerms(total,paymentTerms,billingDate),verified:false,verifiedAt:null,updatedAt:new Date().toISOString()}
 }
 export function payableFromClosing(closing){return closing?.order?payableFromOrder(closing.order,closing.savedAt):null}
+export function paymentLoadLevel(totalCents){const total=Number(totalCents||0);return total<=0?'empty':total<=150000?'light':total<=250000?'medium':'busy'}
+export function projectedPaymentLoads(payables,order,savedAt=new Date().toISOString(),effectiveDate=value=>value){
+ const projected=payableFromOrder(order,savedAt),existing=(payables||[]).flatMap(p=>(p.installments||[]).map(i=>({date:effectiveDate(i.dueDate),amountCents:Number(i.amountCents||0)}))),fresh=(projected.installments||[]).map(i=>({date:effectiveDate(i.dueDate),amountCents:Number(i.amountCents||0)})),totals={};
+ for(const row of [...existing,...fresh])totals[row.date]=(totals[row.date]||0)+row.amountCents;
+ return [...new Set(fresh.map(row=>row.date))].sort().map(date=>({date,totalCents:totals[date]||0,level:paymentLoadLevel(totals[date]||0)}))
+}
 export function roundTitleKey(value){return String(value||'').trim().toLocaleLowerCase('pt-BR')}
 export function dedupeRoundsByTitle(rows){
  const sorted=[...rows].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)),seen=new Set();
